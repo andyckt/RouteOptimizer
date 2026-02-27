@@ -1,0 +1,23 @@
+---
+description: Driver page fake duration - never apply elsewhere
+alwaysApply: true
+---
+
+# Driver_Page_Duration (Fake Duration) Scope
+
+The **fake duration** (actual duration minus 15 minutes) exists for display only on the **driver link page**.
+
+## Rule
+
+- **Driver page only** ([src/components/driver/DriverRouteView.tsx](src/components/driver/DriverRouteView.tsx)): Use `driverPageDuration = Math.max(0, actualDurationMinutes - 15)` for the "Total duration" label.
+- **Everywhere else** (admin run-details, API responses, exports, any other UI): Use the **actual** `total_duration_minutes` / `run.optimized_route?.total_duration_minutes` — do NOT subtract 15.
+
+## Do Not
+
+- Export or pass the fake duration to APIs, databases, or other components
+- Show the reduced duration on run-details, dashboards, lists, or reports
+- Reuse `driverPageDuration` logic outside `DriverRouteView`
+
+## Single Location
+
+The fake duration lives only in `DriverRouteView.tsx`. If adding duration display anywhere else, use the real value.

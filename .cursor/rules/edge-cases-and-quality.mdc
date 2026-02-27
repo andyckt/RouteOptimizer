@@ -1,0 +1,43 @@
+---
+description: Every change must consider edge cases, be flawless, and optimize code
+alwaysApply: true
+---
+
+# Edge Cases, Quality, and Smart Code
+
+For every change in this project:
+
+## 0. Plan Smart, Write Lean
+
+- **Performance**: Optimize system performance; avoid unnecessary re-renders, API calls, or heavy operations
+- **Least code**: Achieve the goal with the smallest amount of code; prefer reuse over duplication
+- **Single source of truth**: Derive from one canonical source; avoid syncing duplicated state or logic
+
+## 1. Consider Edge Cases
+
+Before implementing, identify and handle:
+
+- **Null/undefined**: What if data is missing or empty?
+- **Network failures**: Timeouts, offline, partial responses
+- **Concurrent actions**: Multiple rapid clicks, duplicate submissions
+- **Invalid input**: Malformed data, wrong types, out-of-range values
+- **Race conditions**: Async operations that could overlap or complete out of order
+- **User errors**: Wrong button, accidental navigation, denied permissions (e.g. clipboard)
+- **Idempotency**: Retries, resubmissions, multiple tabs/devices
+- **Backwards compatibility**: Existing runs, old data shapes
+
+## 2. Make It Flawless
+
+- Add loading, disabled, and error states where relevant
+- Provide clear, user-friendly error messages
+- Give feedback for success (e.g. toast, badge) and failure
+- Use validation before API calls; handle API errors gracefully
+- Avoid partial updates: prefer atomic operations where possible
+
+## 3. Checklist Before Shipping
+
+- [ ] Plan smart: minimal code, single source of truth, performance-conscious
+- [ ] All identified edge cases handled
+- [ ] Error paths tested or documented
+- [ ] No obvious race conditions or memory leaks
+- [ ] User always sees what happened and what to do next

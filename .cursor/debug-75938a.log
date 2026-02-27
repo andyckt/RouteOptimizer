@@ -1,0 +1,10 @@
+{"sessionId":"75938a","location":"dashboard/page.tsx","message":"Dashboard mounted","data":{},"timestamp":1772174409004}
+{"sessionId":"75938a","location":"dashboard/page.tsx","message":"Dashboard mounted","data":{},"timestamp":1772174409007}
+{"sessionId":"75938a","location":"dashboard/page.tsx","message":"fetch response","data":{"ok":true,"status":200},"timestamp":1772174410220}
+{"sessionId":"75938a","location":"dashboard/page.tsx","message":"fetch data parsed","data":{"isArray":true,"hasError":false,"length":8},"timestamp":1772174410221}
+{"sessionId":"75938a","location":"dashboard/page.tsx","message":"rendering runs","data":{"count":8},"timestamp":1772174410222}
+{"sessionId":"75938a","location":"dashboard/page.tsx","message":"rendering runs","data":{"count":8},"timestamp":1772174410224}
+{"sessionId":"75938a","location":"dashboard/page.tsx","message":"fetch response","data":{"ok":true,"status":200},"timestamp":1772174410240}
+{"sessionId":"75938a","location":"dashboard/page.tsx","message":"fetch data parsed","data":{"isArray":true,"hasError":false,"length":8},"timestamp":1772174410241}
+{"sessionId":"75938a","location":"dashboard/page.tsx","message":"rendering runs","data":{"count":8},"timestamp":1772174410241}
+{"sessionId":"75938a","location":"dashboard/page.tsx","message":"rendering runs","data":{"count":8},"timestamp":1772174410242}
