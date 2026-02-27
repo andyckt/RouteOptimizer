@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
-import fs from "fs/promises";
-import path from "path";
 import mongoose from "mongoose";
+import { uploadProofImages } from "@/lib/upload/proof";
 import { connectDB } from "@/lib/mongodb";
 import { DeliveryRunModel } from "@/models/DeliveryRun";
 import { json, handleApiError } from "@/lib/http/response";
@@ -78,29 +77,14 @@ export async function POST(req: NextRequest, { params }: Params) {
       });
     }
 
-    const uploadDir = path.join(
-      process.cwd(),
-      "public",
-      "uploads",
-      id,
-      String(stopIndex)
+    const filePayloads = await Promise.all(
+      files.map(async (f) => ({
+        buffer: Buffer.from(await f.arrayBuffer()),
+        name: f.name,
+        type: f.type,
+      }))
     );
-    await fs.mkdir(uploadDir, { recursive: true });
-
-    const urls: string[] = [];
-    for (const file of files) {
-      const ext = file.name.split(".").pop() || "jpg";
-      const safeExt = ["jpg", "jpeg", "png", "webp"].includes(
-        ext.toLowerCase()
-      )
-        ? ext.toLowerCase()
-        : "jpg";
-      const filename = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${safeExt}`;
-      const filepath = path.join(uploadDir, filename);
-      const buffer = Buffer.from(await file.arrayBuffer());
-      await fs.writeFile(filepath, buffer);
-      urls.push(`/uploads/${id}/${stopIndex}/${filename}`);
-    }
+    const urls = await uploadProofImages(id, stopIndex, filePayloads);
 
     const existing = (stop.proof_of_delivery_images ?? []) as string[];
     const allUrls = [...existing, ...urls];
