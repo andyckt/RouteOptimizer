@@ -135,9 +135,30 @@ function RunSummarySidebar({
           )}
           {run.messages_sent_at && (
             <p className="flex items-center gap-2 text-emerald-600 font-medium pt-1">
-              <span>✓</span> ETAs sent
+              <span>✓</span> ETAs sent at{" "}
+              {new Date(run.messages_sent_at).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
             </p>
           )}
+          {(() => {
+            if (run.status !== "completed") return null;
+            const stops = run.optimized_route?.stops ?? [];
+            const times = stops
+              .filter((s) => s.completed_at)
+              .map((s) => new Date(s.completed_at!).getTime());
+            if (times.length === 0) return null;
+            const completionTime = new Date(Math.max(...times)).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+            return (
+              <p className="flex items-center gap-2 text-slate-500 font-medium pt-1">
+                <span>🏁</span> Completed at {completionTime}
+              </p>
+            );
+          })()}
         </div>
       </div>
     </div>
