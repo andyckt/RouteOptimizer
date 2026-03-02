@@ -122,6 +122,24 @@ function RunSummarySidebar({
               <p className="text-blue-600 font-semibold">
                 {formatDuration(totals.total_duration_minutes ?? 0)} estimated
               </p>
+              {run.status === "completed" &&
+                run.actual_start_time &&
+                (() => {
+                  const stops = run.optimized_route?.stops ?? [];
+                  const completedAts = stops
+                    .filter((s) => s.completed_at)
+                    .map((s) => new Date(s.completed_at!).getTime());
+                  if (completedAts.length === 0) return null;
+                  const latestMs = Math.max(...completedAts);
+                  const startMs = new Date(run.actual_start_time).getTime();
+                  const durationMinutes = Math.round((latestMs - startMs) / (1000 * 60));
+                  if (durationMinutes < 0) return null;
+                  return (
+                    <p className="text-slate-600 font-semibold">
+                      {formatDuration(durationMinutes)} actual
+                    </p>
+                  );
+                })()}
               <p className="text-indigo-600 font-semibold">
                 {(totals.total_distance_km ?? 0).toFixed(1)} km total
               </p>
