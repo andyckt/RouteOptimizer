@@ -32,6 +32,8 @@ interface CustomersEditorProps {
   onSaveAndOptimize?: (customers: CustomerRow[]) => Promise<void>;
   /** Called when save or save-and-optimize fails */
   onError?: (message: string) => void;
+  /** Toggle a customer as the route end point; pass null to clear */
+  onSetEndPoint: (index: number | null) => Promise<void>;
 }
 
 export function CustomersEditor({
@@ -44,6 +46,7 @@ export function CustomersEditor({
   saveBlockMessage,
   onSaveAndOptimize,
   onError,
+  onSetEndPoint,
 }: CustomersEditorProps) {
   const [localCustomers, setLocalCustomers] = useState<CustomerRow[]>(customers);
   const [pastedText, setPastedText] = useState("");
@@ -53,6 +56,7 @@ export function CustomersEditor({
   const [overrideIndex, setOverrideIndex] = useState<number | null>(null);
   const [overrideInput, setOverrideInput] = useState("");
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [endPointLoadingIndex, setEndPointLoadingIndex] = useState<number | null>(null);
 
   useEffect(() => {
     setLocalCustomers(customers);
@@ -201,23 +205,65 @@ export function CustomersEditor({
               {localCustomers.map((c, i) => (
                 <tr key={i} className="border-t border-slate-200 hover:bg-slate-50/50 transition-colors">
                   <td className="p-3 align-top">
-                    {editingIndex === i ? (
+                    <div className="flex flex-col gap-1.5 items-start">
+                      {editingIndex === i ? (
+                        <button
+                          type="button"
+                          onClick={() => setEditingIndex(null)}
+                          className="text-emerald-600 hover:text-emerald-700 text-xs font-semibold"
+                        >
+                          Done
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setEditingIndex(i)}
+                          className="text-blue-600 hover:text-blue-700 text-xs font-medium"
+                        >
+                          Edit
+                        </button>
+                      )}
                       <button
                         type="button"
-                        onClick={() => setEditingIndex(null)}
-                        className="text-emerald-600 hover:text-emerald-700 text-xs font-semibold"
+                        onClick={async () => {
+                          const newIndex = c.is_end_point ? null : i;
+                          setEndPointLoadingIndex(i);
+                          try {
+                            await onSetEndPoint(newIndex);
+                          } catch (err) {
+                            onError?.(err instanceof Error ? err.message : "Failed to set end location");
+                          } finally {
+                            setEndPointLoadingIndex(null);
+                          }
+                        }}
+                        disabled={
+                          endPointLoadingIndex !== null ||
+                          (!c.is_end_point &&
+                            c.geocode_status !== "success" &&
+                            c.geocode_status !== "override_success")
+                        }
+                        title={
+                          !c.is_end_point &&
+                          c.geocode_status !== "success" &&
+                          c.geocode_status !== "override_success"
+                            ? "Geocode this address successfully before setting as end location"
+                            : c.is_end_point
+                            ? "Remove as route end location"
+                            : "Set as route end location"
+                        }
+                        className={
+                          c.is_end_point
+                            ? "text-xs font-semibold px-2 py-1 rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors disabled:opacity-50 whitespace-nowrap"
+                            : "text-xs font-medium px-2 py-1 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors disabled:opacity-40 whitespace-nowrap"
+                        }
                       >
-                        Done
+                        {endPointLoadingIndex === i
+                          ? "…"
+                          : c.is_end_point
+                          ? "End ✓"
+                          : "Set End"}
                       </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setEditingIndex(i)}
-                        className="text-blue-600 hover:text-blue-700 text-xs font-medium"
-                      >
-                        Edit
-                      </button>
-                    )}
+                    </div>
                   </td>
                   <td className="p-3 align-top">
                     {editingIndex === i ? (

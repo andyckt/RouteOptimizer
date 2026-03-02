@@ -246,6 +246,41 @@ function EditRunContent() {
     }
   }
 
+  async function handleSetEndPoint(index: number | null) {
+    if (!run) return;
+    const previousRun = run;
+    const updatedCustomers = run.customers.map((c, i) => ({
+      ...c,
+      is_end_point: index !== null ? i === index : false,
+    }));
+    setRun({ ...run, customers: updatedCustomers });
+    try {
+      const res = await fetch(`/api/delivery-runs/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          run_date: run.run_date,
+          driver_name: run.driver_name,
+          start_location: run.start_location,
+          end_location: run.end_location,
+          start_time: run.start_time,
+          travel_mode: run.travel_mode,
+          customers: updatedCustomers,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? "Failed to update end location");
+      }
+      const updated = await res.json();
+      setRun(updated);
+    } catch (err) {
+      setRun(previousRun);
+      setError(err instanceof Error ? err.message : "Failed to update end location");
+    }
+  }
+
   async function handleValidateOverride(index: number, address: string) {
     const res = await fetch(`/api/delivery-runs/${id}/geocode`, {
       method: "POST",
@@ -361,6 +396,7 @@ function EditRunContent() {
                 saveBlocked={saveBlocked}
                 saveBlockMessage={saveBlockMessage}
                 onError={setError}
+                onSetEndPoint={handleSetEndPoint}
               />
             </div>
           </div>
