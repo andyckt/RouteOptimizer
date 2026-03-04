@@ -34,6 +34,8 @@ interface CustomersEditorProps {
   onError?: (message: string) => void;
   /** Toggle a customer as the route end point; pass null to clear */
   onSetEndPoint: (index: number | null) => Promise<void>;
+  /** Remove a customer from the list by index */
+  onRemoveCustomer?: (index: number) => Promise<void>;
 }
 
 export function CustomersEditor({
@@ -47,6 +49,7 @@ export function CustomersEditor({
   onSaveAndOptimize,
   onError,
   onSetEndPoint,
+  onRemoveCustomer,
 }: CustomersEditorProps) {
   const [localCustomers, setLocalCustomers] = useState<CustomerRow[]>(customers);
   const [pastedText, setPastedText] = useState("");
@@ -57,6 +60,7 @@ export function CustomersEditor({
   const [overrideInput, setOverrideInput] = useState("");
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [endPointLoadingIndex, setEndPointLoadingIndex] = useState<number | null>(null);
+  const [deleteLoadingIndex, setDeleteLoadingIndex] = useState<number | null>(null);
 
   useEffect(() => {
     setLocalCustomers(customers);
@@ -263,6 +267,37 @@ export function CustomersEditor({
                           ? "End ✓"
                           : "Set End"}
                       </button>
+                      {onRemoveCustomer && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setEditingIndex((prev) =>
+                              prev === i ? null : prev !== null && prev > i ? prev - 1 : prev
+                            );
+                            if (overrideIndex === i) {
+                              setOverrideIndex(null);
+                              setOverrideInput("");
+                            } else {
+                              setOverrideIndex((prev) =>
+                                prev !== null && prev > i ? prev - 1 : prev
+                              );
+                            }
+                            setDeleteLoadingIndex(i);
+                            try {
+                              await onRemoveCustomer(i);
+                            } catch (err) {
+                              onError?.(err instanceof Error ? err.message : "Failed to remove customer");
+                            } finally {
+                              setDeleteLoadingIndex(null);
+                            }
+                          }}
+                          disabled={deleteLoadingIndex !== null}
+                          title="Remove customer from list"
+                          className="text-xs font-medium px-2 py-1 rounded-lg bg-rose-100 text-rose-700 hover:bg-rose-200 transition-colors disabled:opacity-50 whitespace-nowrap"
+                        >
+                          {deleteLoadingIndex === i ? "…" : "Remove"}
+                        </button>
+                      )}
                     </div>
                   </td>
                   <td className="p-3 align-top">

@@ -202,6 +202,7 @@ export default function CreateRunPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 sticky top-0">
                     <tr>
+                      <th className="p-3 text-left font-medium text-slate-700 w-20">Actions</th>
                       <th className="p-3 text-left font-medium text-slate-700">Name</th>
                       <th className="p-3 text-left font-medium text-slate-700">Address</th>
                       <th className="p-3 text-left font-medium text-slate-700">Phone</th>
@@ -211,6 +212,20 @@ export default function CreateRunPage() {
                   <tbody>
                     {customers.map((c, i) => (
                       <tr key={i} className="border-t border-slate-200 hover:bg-slate-50/50">
+                        <td className="p-3">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm("Remove this customer from the list?")) {
+                                setCustomers((prev) => prev.filter((_, idx) => idx !== i));
+                              }
+                            }}
+                            title="Remove customer from list"
+                            className="text-xs font-medium px-2 py-1 rounded-lg bg-rose-100 text-rose-700 hover:bg-rose-200 transition-colors"
+                          >
+                            Remove
+                          </button>
+                        </td>
                         <td className="p-3 text-slate-900">{c.name}</td>
                         <td className="p-3 text-slate-600">{c.address}</td>
                         <td className="p-3 text-slate-600">{c.phone}</td>
