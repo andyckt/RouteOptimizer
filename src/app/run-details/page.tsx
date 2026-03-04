@@ -22,6 +22,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { DeliveryRun, DeliveryCustomer, OptimizedStop } from "@/types/delivery-run";
+import { formatLabelsExportFilename } from "@/lib/export-filename";
 
 const RouteMap = dynamic(
   () => import("@/components/run-details/RouteMap"),
@@ -656,7 +657,7 @@ function RunDetailsContent() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "labels.xlsx";
+      a.download = formatLabelsExportFilename(run?.driver_name ?? "", run?.run_date ?? "");
       a.click();
       URL.revokeObjectURL(url);
       setLabelsModalOpen(false);

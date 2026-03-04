@@ -7,6 +7,10 @@ import { handleApiError } from "@/lib/http/response";
 import { badRequest, notFound } from "@/lib/http/errors";
 import type { OptimizedStop } from "@/types/delivery-run";
 import { requireAdminSession } from "@/lib/auth/requireAdmin";
+import {
+  formatLabelsExportFilename,
+  formatContentDispositionAttachment,
+} from "@/lib/export-filename";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -45,6 +49,8 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     await connectDB();
     const run = (await DeliveryRunModel.findById(id).lean()) as {
+      driver_name?: string;
+      run_date?: string;
       optimized_route?: { stops?: OptimizedStop[] };
     } | null;
     if (!run) throw notFound("Delivery run not found");
@@ -98,11 +104,16 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
 
+    const filename = formatLabelsExportFilename(
+      run.driver_name ?? "",
+      run.run_date ?? ""
+    );
+
     return new Response(new Uint8Array(buf), {
       headers: {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": 'attachment; filename="labels.xlsx"',
+        "Content-Disposition": formatContentDispositionAttachment(filename),
       },
     });
   } catch (err) {
