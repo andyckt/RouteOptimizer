@@ -21,6 +21,9 @@ const DELIVERED_SMS = "您好，今天的餐食已经送达了，请慢用~";
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const { id } = await params;
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[complete-with-proof] Request received for run:", id);
+    }
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       throw badRequest("Invalid run ID");
     }
@@ -88,22 +91,64 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const existing = (stop.proof_of_delivery_images ?? []) as string[];
     const allUrls = [...existing, ...urls];
-    stop.proof_of_delivery_images = allUrls;
-    stop.proof_of_delivery = allUrls[0];
-    stop.completed = true;
-    stop.completed_at = new Date().toISOString();
+    const completedAt = new Date().toISOString();
 
-    const allStopsCompleted = route.stops.every(
-      (s: { completed?: boolean }) => Boolean(s.completed)
+    // Atomic update: only set completed if not already completed.
+    // Prevents double-SMS when driver double-taps or offline queue retries.
+    const prefix = `optimized_route.stops.${stopIndex}`;
+    const updatedRun = await DeliveryRunModel.findOneAndUpdate(
+      {
+        _id: id,
+        [prefix + ".completed"]: { $ne: true },
+      },
+      {
+        $set: {
+          [prefix + ".proof_of_delivery_images"]: allUrls,
+          [prefix + ".proof_of_delivery"]: allUrls[0],
+          [prefix + ".completed"]: true,
+          [prefix + ".completed_at"]: completedAt,
+        },
+      },
+      { new: true }
     );
-    if (allStopsCompleted) {
-      run.status = "completed";
+
+    if (!updatedRun) {
+      // Another request already completed this stop (race / retry). Return idempotent.
+      const current = await DeliveryRunModel.findById(id).lean();
+      const doc = current as {
+        _id: { toString(): string };
+        [k: string]: unknown;
+      };
+      return json({
+        run: { ...sanitizeRunForResponse(doc), _id: doc._id.toString() },
+        idempotent: true,
+      });
     }
 
-    await run.save();
+    const routeAfter = updatedRun.optimized_route;
+    const allStopsCompleted =
+      routeAfter?.stops?.every(
+        (s: { completed?: boolean }) => Boolean(s.completed)
+      ) ?? false;
+    if (allStopsCompleted) {
+      await DeliveryRunModel.updateOne(
+        { _id: id },
+        { $set: { status: "completed" } }
+      );
+    }
 
+    const stopAfter = routeAfter?.stops?.[stopIndex] as OptimizedStop | undefined;
     const { OPENPHONE_FROM } = getServerEnv();
-    const toE164 = toE164NorthAmerica(String(stop.customer_phone ?? ""));
+    const rawPhone = String(stopAfter?.customer_phone ?? stop.customer_phone ?? "");
+    const toE164 = toE164NorthAmerica(rawPhone);
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[complete-with-proof] About to send SMS:", {
+        stopIndex,
+        rawPhone,
+        toE164,
+        customerName: stopAfter?.customer_name ?? stop.customer_name,
+      });
+    }
     if (toE164) {
       const smsResult = await sendSms({
         from: OPENPHONE_FROM,
@@ -111,7 +156,11 @@ export async function POST(req: NextRequest, { params }: Params) {
         content: DELIVERED_SMS,
       });
       if (!smsResult.success) {
-        const doc = run.toObject() as {
+        console.error("[complete-with-proof] SMS send failed:", {
+          toE164,
+          error: smsResult.error,
+        });
+        const doc = updatedRun.toObject() as {
           _id: { toString(): string };
           [k: string]: unknown;
         };
@@ -123,7 +172,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       }
     }
 
-    const doc = run.toObject() as {
+    const doc = updatedRun.toObject() as {
       _id: { toString(): string };
       [k: string]: unknown;
     };
@@ -132,6 +181,12 @@ export async function POST(req: NextRequest, { params }: Params) {
       ...(toE164 && { delivered_sms_sent: true }),
     });
   } catch (err) {
+    console.error("[complete-with-proof] Server error:", {
+      message: err instanceof Error ? err.message : String(err),
+      name: err instanceof Error ? err.name : undefined,
+      stack: err instanceof Error ? err.stack : undefined,
+      fullError: err,
+    });
     return handleApiError(err);
   }
 }

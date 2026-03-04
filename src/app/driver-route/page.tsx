@@ -1,6 +1,12 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
+import {
+  loadError,
+  photoQueuedOffline,
+  startError,
+  unexpectedError,
+} from "@/lib/driver-errors";
 import { useEffect, useState, useRef, useCallback, Suspense } from "react";
 import type { DeliveryRun } from "@/types/delivery-run";
 import { DriverRouteView } from "@/components/driver/DriverRouteView";
@@ -25,6 +31,7 @@ function DriverRouteContent() {
   const [pendingCount, setPendingCount] = useState(0);
   const [syncingQueue, setSyncingQueue] = useState(false);
   const fileInputRefs = useRef<Map<number, HTMLInputElement | null>>(new Map());
+  const uploadingRef = useRef(false);
 
   const [pendingStopIndices, setPendingStopIndices] = useState<Set<number>>(
     () => new Set()
@@ -70,13 +77,22 @@ function DriverRouteContent() {
       return;
     }
     fetch(`/api/delivery-runs/${id}/driver?token=${encodeURIComponent(token)}`)
-      .then((r) => r.json())
+      .then(async (r) => {
+        const text = await r.text();
+        try {
+          const data = JSON.parse(text);
+          if (!r.ok || data.error) throw new Error(loadError(r.status, data?.error));
+          return data;
+        } catch (parseErr) {
+          if (parseErr instanceof Error && parseErr.message.startsWith("[")) throw parseErr;
+          throw new Error(loadError(r.status));
+        }
+      })
       .then((data) => {
-        if (data.error) throw new Error(data.error);
         setRun(data);
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : "Failed to load run");
+        setError(err instanceof Error ? err.message : loadError(0, "Unknown error"));
         setRun(null);
       })
       .finally(() => setLoading(false));
@@ -112,8 +128,14 @@ function DriverRouteContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to start");
+      const text = await res.text();
+      let data: { run?: unknown; error?: string; eta_sms_result?: unknown };
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error(startError(res.status));
+      }
+      if (!res.ok) throw new Error(startError(res.status, data.error));
       setRun(data.run);
       setShowStartConfirm(false);
       const eta = data.eta_sms_result;
@@ -128,7 +150,7 @@ function DriverRouteContent() {
         );
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start delivery");
+      setError(err instanceof Error ? err.message : unexpectedError("Could not start"));
     } finally {
       setStarting(false);
     }
@@ -140,6 +162,7 @@ function DriverRouteContent() {
 
   async function handleUploadProofAndComplete(stopIndex: number) {
     if (!id || !token) return;
+    if (uploadingRef.current) return;
     const input = fileInputRefs.current.get(stopIndex);
     if (!input?.files?.length) {
       setError("Please select 1-3 images to upload.");
@@ -157,6 +180,7 @@ function DriverRouteContent() {
     }
 
     setError(null);
+    uploadingRef.current = true;
     setUploading(stopIndex);
     try {
       const queueId = await addPending(id, stopIndex, token, files);
@@ -167,9 +191,7 @@ function DriverRouteContent() {
         input.value = "";
         await refreshPendingCount();
       } else if (result.isRetryable) {
-        setError(
-          "Photo saved. Will complete when you're back online—you can continue to next stop."
-        );
+        setError(photoQueuedOffline());
         await refreshPendingCount();
       } else {
         await remove(queueId);
@@ -178,9 +200,10 @@ function DriverRouteContent() {
       }
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to upload/complete"
+        err instanceof Error ? err.message : unexpectedError("Upload failed")
       );
     } finally {
+      uploadingRef.current = false;
       setUploading(null);
     }
   }

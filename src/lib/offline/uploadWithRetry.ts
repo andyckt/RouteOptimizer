@@ -1,4 +1,9 @@
 import type { PendingImage } from "./completeQueue";
+import {
+  invalidResponse,
+  networkError,
+  apiError,
+} from "@/lib/driver-errors";
 
 const UPLOAD_TIMEOUT_MS = 90_000;
 
@@ -43,22 +48,50 @@ export async function tryCompleteWithProof(
     );
     clearTimeout(timeoutId);
 
-    const data = await res.json();
+    const text = await res.text();
+    let data: { run?: { _id: string; [k: string]: unknown }; error?: string };
+    try {
+      data = JSON.parse(text);
+    } catch (parseErr) {
+      const preview = text.slice(0, 300);
+      console.error("[complete-with-proof] Client received non-JSON response:", {
+        status: res.status,
+        statusText: res.statusText,
+        bodyPreview: preview,
+        parseError: parseErr instanceof Error ? parseErr.message : String(parseErr),
+      });
+      const isRetryable = res.status >= 500;
+      return {
+        ok: false,
+        error: invalidResponse(res.status),
+        isRetryable,
+      };
+    }
 
     if (res.ok && data.run) {
       return { ok: true, run: data.run };
     }
 
-    const error = data.error ?? "Upload failed";
     const isRetryable = res.status >= 500;
-    return { ok: false, error, isRetryable };
+    return {
+      ok: false,
+      error: apiError(res.status, data.error),
+      isRetryable,
+    };
   } catch (err) {
     clearTimeout(timeoutId);
-    const isRetryable =
-      err instanceof TypeError ||
-      (err instanceof Error && err.name === "AbortError");
-    const error =
-      err instanceof Error ? err.message : "Network error";
-    return { ok: false, error, isRetryable };
+    const msg = err instanceof Error ? err.message : String(err);
+    const isAbort = err instanceof Error && err.name === "AbortError";
+    console.error("[complete-with-proof] Client request failed:", {
+      message: msg,
+      name: err instanceof Error ? err.name : undefined,
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+    const isRetryable = err instanceof TypeError || isAbort;
+    return {
+      ok: false,
+      error: networkError(isAbort ? "Request timed out" : msg),
+      isRetryable,
+    };
   }
 }
