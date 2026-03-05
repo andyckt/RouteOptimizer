@@ -491,7 +491,7 @@ export function DriverRouteView({
                               if (inputEl) fileInputRefs.current.set(i, inputEl);
                             }}
                             type="file"
-                            accept="image/jpeg,image/png,image/webp"
+                            accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
                             multiple
                             id={`proof-${i}`}
                             className="sr-only"

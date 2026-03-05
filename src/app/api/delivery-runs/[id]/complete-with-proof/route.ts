@@ -14,16 +14,23 @@ import type { OptimizedStop } from "@/types/delivery-run";
 
 type Params = { params: Promise<{ id: string }> };
 
-const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 const MAX_SIZE = 10 * 1024 * 1024;
 const DELIVERED_SMS = "您好，今天的餐食已经送达了，请慢用~";
 
 export async function POST(req: NextRequest, { params }: Params) {
+  const reqId = `req-${Date.now().toString(36)}`;
   try {
     const { id } = await params;
-    if (process.env.NODE_ENV !== "production") {
-      console.log("[complete-with-proof] Request received for run:", id);
-    }
+    const contentLength = req.headers.get("content-length");
+    console.log(
+      JSON.stringify({
+        event: "complete_with_proof_start",
+        reqId,
+        runId: id,
+        contentLength: contentLength ? parseInt(contentLength, 10) : null,
+      })
+    );
     if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       throw badRequest("Invalid run ID");
     }
@@ -45,6 +52,17 @@ export async function POST(req: NextRequest, { params }: Params) {
     const files = images.filter(
       (x): x is File => x instanceof File && x.size > 0
     );
+    const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
+    console.log(
+      JSON.stringify({
+        event: "complete_with_proof_images",
+        reqId,
+        runId: id,
+        stopIndex,
+        fileCount: files.length,
+        totalBytes,
+      })
+    );
     if (files.length === 0 || files.length > 3) {
       throw validationError("Provide 1–3 images (jpg/png/webp, max 10MB each)");
     }
@@ -54,7 +72,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         throw validationError("Each image must be under 10MB");
       }
       if (!ALLOWED_TYPES.includes(f.type)) {
-        throw validationError("Only JPG, PNG, and WebP allowed");
+        throw validationError("Only JPG, PNG, WebP, or HEIC allowed");
       }
     }
 
@@ -141,14 +159,16 @@ export async function POST(req: NextRequest, { params }: Params) {
     const { OPENPHONE_FROM } = getServerEnv();
     const rawPhone = String(stopAfter?.customer_phone ?? stop.customer_phone ?? "");
     const toE164 = toE164NorthAmerica(rawPhone);
-    if (process.env.NODE_ENV !== "production") {
-      console.log("[complete-with-proof] About to send SMS:", {
+    console.log(
+      JSON.stringify({
+        event: "complete_with_proof_success",
+        reqId,
+        runId: id,
         stopIndex,
-        rawPhone,
-        toE164,
         customerName: stopAfter?.customer_name ?? stop.customer_name,
-      });
-    }
+        smsTo: toE164 ? "sent" : "skipped",
+      })
+    );
     if (toE164) {
       const smsResult = await sendSms({
         from: OPENPHONE_FROM,
@@ -156,10 +176,15 @@ export async function POST(req: NextRequest, { params }: Params) {
         content: DELIVERED_SMS,
       });
       if (!smsResult.success) {
-        console.error("[complete-with-proof] SMS send failed:", {
-          toE164,
-          error: smsResult.error,
-        });
+        console.error(
+          JSON.stringify({
+            event: "complete_with_proof_sms_failed",
+            reqId,
+            runId: id,
+            toE164,
+            error: smsResult.error,
+          })
+        );
         const doc = updatedRun.toObject() as {
           _id: { toString(): string };
           [k: string]: unknown;
@@ -181,12 +206,15 @@ export async function POST(req: NextRequest, { params }: Params) {
       ...(toE164 && { delivered_sms_sent: true }),
     });
   } catch (err) {
-    console.error("[complete-with-proof] Server error:", {
-      message: err instanceof Error ? err.message : String(err),
-      name: err instanceof Error ? err.name : undefined,
-      stack: err instanceof Error ? err.stack : undefined,
-      fullError: err,
-    });
+    console.error(
+      JSON.stringify({
+        event: "complete_with_proof_error",
+        reqId,
+        message: err instanceof Error ? err.message : String(err),
+        name: err instanceof Error ? err.name : undefined,
+        stack: err instanceof Error ? err.stack : undefined,
+      })
+    );
     return handleApiError(err);
   }
 }

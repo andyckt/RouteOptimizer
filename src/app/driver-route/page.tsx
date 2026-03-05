@@ -7,6 +7,7 @@ import {
   startError,
   unexpectedError,
 } from "@/lib/driver-errors";
+import { compressImagesForUpload } from "@/lib/image/compress-for-upload";
 import { useEffect, useState, useRef, useCallback, Suspense } from "react";
 import type { DeliveryRun } from "@/types/delivery-run";
 import { DriverRouteView } from "@/components/driver/DriverRouteView";
@@ -168,14 +169,14 @@ function DriverRouteContent() {
       setError("Please select 1-3 images to upload.");
       return;
     }
-    const files = Array.from(input.files).slice(0, 3);
-    if (files.some((f) => f.size > 10 * 1024 * 1024)) {
+    const rawFiles = Array.from(input.files).slice(0, 3);
+    if (rawFiles.some((f) => f.size > 10 * 1024 * 1024)) {
       setError("Each image must be under 10MB.");
       return;
     }
-    const allowed = ["image/jpeg", "image/png", "image/webp"];
-    if (files.some((f) => !allowed.includes(f.type))) {
-      setError("Only JPG, PNG, and WebP allowed.");
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
+    if (rawFiles.some((f) => !allowed.includes(f.type))) {
+      setError("Only JPG, PNG, WebP, or HEIC allowed.");
       return;
     }
 
@@ -183,6 +184,7 @@ function DriverRouteContent() {
     uploadingRef.current = true;
     setUploading(stopIndex);
     try {
+      const files = await compressImagesForUpload(rawFiles);
       const queueId = await addPending(id, stopIndex, token, files);
       const result = await tryCompleteWithProof(id, stopIndex, token, files);
       if (result.ok && result.run) {

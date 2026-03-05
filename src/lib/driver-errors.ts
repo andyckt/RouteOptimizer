@@ -8,9 +8,16 @@ function ref(): string {
   return `ERR-${Date.now().toString(36).slice(-6).toUpperCase()}`;
 }
 
+/** 413 Payload Too Large - photos exceed server limit */
+export function payloadTooLarge(): string {
+  const r = ref();
+  return `[${r}] Photos too large (413). What to do: Choose fewer or smaller photos, then try again.`;
+}
+
 /** Server returned non-JSON (HTML error page, truncated response, etc.) */
 export function invalidResponse(status: number): string {
   const r = ref();
+  if (status === 413) return payloadTooLarge();
   if (status >= 500) {
     return `[${r}] Server error (${status}). Response was corrupted—often due to poor signal. What to do: Try again when you have better connection.`;
   }

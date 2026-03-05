@@ -7,7 +7,7 @@ import fs from "fs/promises";
 import path from "path";
 import { getR2ConfigFromEnv, uploadToR2 } from "@/lib/r2/client";
 
-const ALLOWED_EXT = ["jpg", "jpeg", "png", "webp"];
+const ALLOWED_EXT = ["jpg", "jpeg", "png", "webp", "heic"];
 
 function getSafeExt(filename: string): string {
   const ext = filename.split(".").pop()?.toLowerCase() || "jpg";

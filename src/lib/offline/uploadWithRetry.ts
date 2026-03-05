@@ -3,6 +3,7 @@ import {
   invalidResponse,
   networkError,
   apiError,
+  payloadTooLarge,
 } from "@/lib/driver-errors";
 
 const UPLOAD_TIMEOUT_MS = 90_000;
@@ -49,6 +50,11 @@ export async function tryCompleteWithProof(
     clearTimeout(timeoutId);
 
     const text = await res.text();
+
+    if (res.status === 413) {
+      return { ok: false, error: payloadTooLarge(), isRetryable: false };
+    }
+
     let data: { run?: { _id: string; [k: string]: unknown }; error?: string };
     try {
       data = JSON.parse(text);
@@ -75,7 +81,8 @@ export async function tryCompleteWithProof(
     const isRetryable = res.status >= 500;
     return {
       ok: false,
-      error: apiError(res.status, data.error),
+      error:
+        res.status === 413 ? payloadTooLarge() : apiError(res.status, data.error),
       isRetryable,
     };
   } catch (err) {
