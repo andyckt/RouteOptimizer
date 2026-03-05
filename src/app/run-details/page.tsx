@@ -2,6 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useState, useRef, Suspense } from "react";
 import dynamic from "next/dynamic";
 import {
@@ -497,7 +498,7 @@ function RunDetailsContent() {
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [id, run?.status]);
+  }, [id, run]);
 
   async function handleOptimize() {
     if (!id) return;
@@ -1291,7 +1292,14 @@ function ProofOfDeliveryPreview({ urls }: { urls: string[] }) {
               className="block rounded-lg overflow-hidden border-2 border-slate-200 hover:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 transition-colors"
               title={`View proof ${j + 1}`}
             >
-              <img src={src} alt={`Proof ${j + 1}`} className="w-14 h-14 object-cover" />
+              <Image
+                src={src}
+                alt={`Proof ${j + 1}`}
+                width={56}
+                height={56}
+                className="w-14 h-14 object-cover"
+                unoptimized={src.startsWith("/")}
+              />
             </a>
           );
         })}

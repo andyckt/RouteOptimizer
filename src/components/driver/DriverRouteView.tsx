@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import Image from "next/image";
 import type { DeliveryRun, DeliveryCustomer, OptimizedStop } from "@/types/delivery-run";
 
 function formatDuration(minutes: number): string {
@@ -48,6 +49,7 @@ function PreviewThumbnails({ urls }: { urls: string[] }) {
   return (
     <div className="flex flex-wrap gap-2 items-center">
       {urls.map((url, j) => (
+        // eslint-disable-next-line @next/next/no-img-element -- blob URLs for local file preview
         <img
           key={j}
           src={url}
@@ -85,15 +87,16 @@ function ProofOfDeliveryThumbnails({ urls }: { urls: string[] }) {
               href={src}
               target="_blank"
               rel="noopener noreferrer"
-              className="block rounded-lg overflow-hidden border-2 border-slate-200 hover:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 transition-colors"
+              className="block rounded-lg overflow-hidden border-2 border-slate-200 hover:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 transition-colors size-12"
               title={`View proof ${j + 1}`}
             >
-              <img
+              <Image
                 src={src}
                 alt={`Proof ${j + 1}`}
-                loading="lazy"
-                decoding="async"
+                width={48}
+                height={48}
                 className="w-12 h-12 object-cover"
+                unoptimized={src.startsWith("/")}
               />
             </a>
           );
@@ -126,7 +129,7 @@ export function DriverRouteView({
   syncingQueue = false,
   pendingCount = 0,
 }: DriverRouteViewProps) {
-  const stops = run.optimized_route?.stops ?? [];
+  const stops = useMemo(() => run.optimized_route?.stops ?? [], [run.optimized_route?.stops]);
   const customers = run.customers ?? [];
   const isStarted = run.status === "in_progress" || run.status === "completed";
   const totalStops = stops.length;
