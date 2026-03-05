@@ -130,14 +130,22 @@ function DriverRouteContent() {
         body: JSON.stringify({ token }),
       });
       const text = await res.text();
-      let data: { run?: unknown; error?: string; eta_sms_result?: unknown };
+      let data: {
+        run?: unknown;
+        error?: string;
+        eta_sms_result?: {
+          total_sent?: number;
+          total_failed?: number;
+          failed_customers?: { customer_name: string; error: string }[];
+        };
+      };
       try {
         data = JSON.parse(text);
       } catch {
         throw new Error(startError(res.status));
       }
       if (!res.ok) throw new Error(startError(res.status, data.error));
-      setRun(data.run);
+      setRun(data.run as DeliveryRun);
       setShowStartConfirm(false);
       const eta = data.eta_sms_result;
       if (eta?.failed_customers?.length) {
