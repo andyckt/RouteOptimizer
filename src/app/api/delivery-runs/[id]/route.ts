@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import mongoose from "mongoose";
 import { connectDB } from "@/lib/mongodb";
 import { DeliveryRunModel } from "@/models/DeliveryRun";
@@ -117,6 +117,22 @@ export async function PUT(request: NextRequest, { params }: Params) {
       ...saved,
       _id: run._id.toString(),
     });
+  } catch (err) {
+    return handleApiError(err);
+  }
+}
+
+export async function DELETE(req: NextRequest, { params }: Params) {
+  try {
+    requireAdminSession(req);
+    const { id } = await params;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      throw badRequest("Invalid run ID");
+    }
+    await connectDB();
+    const deleted = await DeliveryRunModel.findByIdAndDelete(id);
+    if (!deleted) throw notFound("Delivery run not found");
+    return new NextResponse(null, { status: 204 });
   } catch (err) {
     return handleApiError(err);
   }

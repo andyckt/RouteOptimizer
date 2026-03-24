@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 
 interface RunSummary {
@@ -106,8 +106,60 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFilter, setDateFilter] = useState("all");
   const [customDate, setCustomDate] = useState("");
+  const [confirmDeleteRun, setConfirmDeleteRun] = useState<RunSummary | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const filteredRuns = filterRuns(runs, searchQuery, dateFilter, customDate);
+
+  const closeDeleteModal = useCallback(() => {
+    if (deletingId !== null) return;
+    setConfirmDeleteRun(null);
+    setDeleteError(null);
+  }, [deletingId]);
+
+  useEffect(() => {
+    if (!confirmDeleteRun) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeDeleteModal();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirmDeleteRun, closeDeleteModal]);
+
+  async function performDelete(run: RunSummary) {
+    setDeleteError(null);
+    setDeletingId(run._id);
+    try {
+      const res = await fetch(`/api/delivery-runs/${run._id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (res.status === 401) {
+        const redirect = encodeURIComponent(window.location.pathname + window.location.search);
+        window.location.href = `/login?redirect=${redirect}`;
+        return;
+      }
+      if (res.ok || res.status === 404) {
+        setRuns((prev) => prev.filter((r) => r._id !== run._id));
+        setConfirmDeleteRun(null);
+        return;
+      }
+      const text = await res.text();
+      let message = "Could not delete run";
+      try {
+        const j = JSON.parse(text) as { error?: string };
+        if (j.error) message = j.error;
+      } catch {
+        if (text) message = text.slice(0, 120);
+      }
+      setDeleteError(message);
+    } catch {
+      setDeleteError("Network error. Check your connection and try again.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   useEffect(() => {
     fetch("/api/delivery-runs", { credentials: "include" })
@@ -127,6 +179,59 @@ export default function DashboardPage() {
 
   return (
     <main className="min-h-screen bg-blue-50/50">
+      {confirmDeleteRun && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-run-title"
+          aria-describedby="delete-run-desc"
+          onClick={closeDeleteModal}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-xl max-w-md w-full p-5 sm:p-6 border border-slate-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="delete-run-title" className="text-lg font-bold text-slate-900">
+              Delete this run?
+            </h2>
+            <p id="delete-run-desc" className="mt-2 text-sm text-slate-600">
+              <span className="font-medium text-slate-800">
+                {confirmDeleteRun.run_date}
+              </span>
+              {" · "}
+              {confirmDeleteRun.driver_name || "Unnamed driver"}
+            </p>
+            <p className="mt-2 text-sm text-slate-600">
+              This cannot be undone. Driver links for this run will stop working.
+            </p>
+            {deleteError && (
+              <p className="mt-3 text-sm text-red-600" role="alert">
+                {deleteError}
+              </p>
+            )}
+            <div className="mt-5 flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
+              <button
+                type="button"
+                disabled={deletingId !== null}
+                onClick={closeDeleteModal}
+                className="min-h-[44px] px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deletingId !== null}
+                onClick={() => performDelete(confirmDeleteRun)}
+                className="min-h-[44px] px-4 py-2.5 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 disabled:opacity-50"
+              >
+                {deletingId ? "Deleting…" : "Delete run"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white border-b border-slate-200 shadow-sm border-l-4 border-l-blue-500">
         <div className="px-4 sm:px-6 py-4 md:py-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -288,6 +393,17 @@ export default function DashboardPage() {
                             Details
                           </Link>
                         </div>
+                        <button
+                          type="button"
+                          disabled={deletingId !== null}
+                          onClick={() => {
+                            setDeleteError(null);
+                            setConfirmDeleteRun(r);
+                          }}
+                          className="mt-2 w-full min-h-[40px] rounded-lg border border-red-200 text-red-700 font-medium hover:bg-red-50 disabled:opacity-50 transition-colors"
+                        >
+                          Delete
+                        </button>
                       </div>
                     );
                   })
@@ -312,7 +428,9 @@ export default function DashboardPage() {
                         <th className="p-3 text-slate-700 font-semibold">Stops</th>
                         <th className="p-3 text-slate-700 font-semibold">Completed</th>
                         <th className="p-3 text-slate-700 font-semibold">Completion time</th>
-                        <th className="p-3 text-slate-700 font-semibold">Actions</th>
+                        <th className="p-3 text-slate-700 font-semibold w-[1%] whitespace-nowrap">
+                          Actions
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -355,7 +473,7 @@ export default function DashboardPage() {
                               {completionTime ?? "—"}
                             </td>
                             <td className="p-3">
-                              <div className="flex gap-2">
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                                 <Link
                                   href={`/edit-run?id=${r._id}`}
                                   className="text-blue-600 hover:text-blue-700 font-medium transition-colors"
@@ -368,6 +486,17 @@ export default function DashboardPage() {
                                 >
                                   Details
                                 </Link>
+                                <button
+                                  type="button"
+                                  disabled={deletingId !== null}
+                                  onClick={() => {
+                                    setDeleteError(null);
+                                    setConfirmDeleteRun(r);
+                                  }}
+                                  className="text-red-600 hover:text-red-700 font-medium transition-colors disabled:opacity-50"
+                                >
+                                  Delete
+                                </button>
                               </div>
                             </td>
                           </tr>
