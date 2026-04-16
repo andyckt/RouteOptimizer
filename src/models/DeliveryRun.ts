@@ -22,6 +22,7 @@ const customerSchema = new Schema<DeliveryCustomer>(
     nearby_address_override: { type: String },
     nearby_lat: { type: Number },
     nearby_lng: { type: Number },
+    fixed_stop_position: { type: Number, default: null },
   },
   { _id: false }
 );

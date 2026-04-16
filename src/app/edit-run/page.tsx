@@ -1,13 +1,15 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, useMemo, Suspense } from "react";
 import Link from "next/link";
 import { RunForm, type RunFormData } from "@/components/runs/RunForm";
 import {
   CustomersEditor,
   type CustomerRow,
 } from "@/components/runs/CustomersEditor";
+import type { DeliveryCustomer } from "@/types/delivery-run";
+import { getFixedStopPositionValidationMessage } from "@/lib/validation/fixed-stop-position";
 
 interface RunData {
   _id: string;
@@ -51,6 +53,14 @@ function EditRunContent() {
       .catch(() => setRun(null))
       .finally(() => setLoading(false));
   }, [id]);
+
+  const fixedStopInvalidMsg = useMemo(
+    () =>
+      getFixedStopPositionValidationMessage(
+        (run?.customers ?? []) as DeliveryCustomer[]
+      ),
+    [run?.customers]
+  );
 
   if (!id) {
     return (
@@ -371,7 +381,19 @@ function EditRunContent() {
             <button
               type="button"
               onClick={handleOptimize}
-              disabled={optimizing || customers.length === 0 || saveBlocked}
+              disabled={
+                optimizing ||
+                customers.length === 0 ||
+                saveBlocked ||
+                Boolean(fixedStopInvalidMsg)
+              }
+              title={
+                fixedStopInvalidMsg
+                  ? fixedStopInvalidMsg
+                  : saveBlocked
+                    ? saveBlockMessage
+                    : undefined
+              }
               className="min-h-[44px] px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
             >
               <span aria-hidden>✈️</span>

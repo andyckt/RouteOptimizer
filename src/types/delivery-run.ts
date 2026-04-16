@@ -20,6 +20,8 @@ export interface DeliveryCustomer {
   nearby_address_override?: string;
   nearby_lat?: number;
   nearby_lng?: number;
+  /** Admin-only: exact 1-based position in the final optimized stop list; null/omit = flexible. */
+  fixed_stop_position?: number | null;
 }
 
 export interface OptimizedStop {

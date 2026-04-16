@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { AddSingleCustomer } from "./AddSingleCustomer";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
+import type { DeliveryCustomer } from "@/types/delivery-run";
+import { getFixedStopPositionValidationMessage } from "@/lib/validation/fixed-stop-position";
 
 export interface CustomerRow {
   name: string;
@@ -18,6 +20,7 @@ export interface CustomerRow {
   lng?: number;
   is_first_stop?: boolean;
   is_end_point?: boolean;
+  fixed_stop_position?: number | null;
 }
 
 interface CustomersEditorProps {
@@ -96,9 +99,18 @@ export function CustomersEditor({
     (c) =>
       c.geocode_status === "failed" && !(c.nearby_address_override?.trim())
   );
-  const effectiveSaveBlocked = saveBlocked || hasFailedWithoutOverride;
+  const fixedStopMessage = useMemo(
+    () =>
+      getFixedStopPositionValidationMessage(
+        localCustomers as DeliveryCustomer[]
+      ),
+    [localCustomers]
+  );
+  const effectiveSaveBlocked =
+    saveBlocked || hasFailedWithoutOverride || Boolean(fixedStopMessage);
   const effectiveSaveBlockMessage =
     saveBlockMessage ??
+    fixedStopMessage ??
     (hasFailedWithoutOverride
       ? "Fix failed geocodes or add nearby address overrides before saving."
       : undefined);
@@ -203,6 +215,9 @@ export function CustomersEditor({
                 <th className="p-3 text-left text-slate-700 font-semibold">Notes</th>
                 <th className="p-3 text-left text-slate-700 font-semibold">Status</th>
                 <th className="p-3 text-left text-slate-700 font-semibold">Override</th>
+                <th className="p-3 text-left text-slate-700 font-semibold whitespace-nowrap min-w-[110px]">
+                  Fixed Stop
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -434,6 +449,39 @@ export function CustomersEditor({
                         Add override
                       </button>
                     )}
+                  </td>
+                  <td className="p-3 align-top">
+                    <span className="sr-only">Fixed stop position</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={localCustomers.length}
+                      step={1}
+                      inputMode="numeric"
+                      value={
+                        c.fixed_stop_position == null ||
+                        c.fixed_stop_position === undefined
+                          ? ""
+                          : c.fixed_stop_position
+                      }
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === "") {
+                          updateCustomer(i, { fixed_stop_position: null });
+                          return;
+                        }
+                        const n = parseInt(raw, 10);
+                        if (!Number.isNaN(n)) {
+                          updateCustomer(i, { fixed_stop_position: n });
+                        }
+                      }}
+                      className="w-full max-w-[5.5rem] border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="—"
+                      aria-label={`Fixed stop position for ${c.name}`}
+                    />
+                    <p className="text-xs text-slate-500 mt-1 max-w-[9rem]">
+                      Leave blank for flexible order
+                    </p>
                   </td>
                 </tr>
               ))}

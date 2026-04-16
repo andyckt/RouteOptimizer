@@ -1,4 +1,6 @@
 import type { DeliveryCustomer, OptimizedStop } from "@/types/delivery-run";
+import { validationError } from "@/lib/http/errors";
+import { parseFixedStopValue } from "@/lib/validation/fixed-stop-position";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -10,7 +12,11 @@ function omitPriority<T extends UnknownRecord>(input: T): Omit<T, "priority"> {
 export function sanitizeCustomer(
   customer: DeliveryCustomer | UnknownRecord
 ): DeliveryCustomer {
-  return omitPriority(customer as UnknownRecord) as unknown as DeliveryCustomer;
+  const base = omitPriority(customer as UnknownRecord) as UnknownRecord;
+  const p = parseFixedStopValue(base.fixed_stop_position);
+  if (!p.ok) throw validationError(p.message);
+  base.fixed_stop_position = p.value;
+  return base as unknown as DeliveryCustomer;
 }
 
 export function sanitizeCustomers(

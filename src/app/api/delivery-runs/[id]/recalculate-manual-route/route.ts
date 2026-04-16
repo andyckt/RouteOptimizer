@@ -7,7 +7,12 @@ import { badRequest, notFound, validationError } from "@/lib/http/errors";
 import type { DeliveryCustomer, OptimizedStop } from "@/types/delivery-run";
 import { geocodeAddress } from "@/lib/google/geocoding";
 import { getDirectionsLeg, type LatLng } from "@/lib/google/directions";
-import { sanitizeStops, sanitizeRunForResponse } from "@/lib/normalization/delivery-run";
+import {
+  sanitizeCustomers,
+  sanitizeStops,
+  sanitizeRunForResponse,
+} from "@/lib/normalization/delivery-run";
+import { assertManualOrderRespectsFixedStops } from "@/lib/validation/fixed-stop-position";
 import { requireAdminSession } from "@/lib/auth/requireAdmin";
 
 type Params = { params: Promise<{ id: string }> };
@@ -85,6 +90,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
 
     const rawCustomers = JSON.parse(JSON.stringify(run.customers ?? [])) as DeliveryCustomer[];
+    const customers = sanitizeCustomers(rawCustomers);
+    assertManualOrderRespectsFixedStops(stops, customers);
 
     const startGeocode = await geocodeAddress(run.start_location);
     if (!startGeocode) {
@@ -100,8 +107,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       const customer =
         typeof stop.customer_index === "number" &&
         stop.customer_index >= 0 &&
-        stop.customer_index < rawCustomers.length
-          ? rawCustomers[stop.customer_index]
+        stop.customer_index < customers.length
+          ? customers[stop.customer_index]
           : undefined;
       if (!customer) {
         throw validationError(`Stop ${i + 1}: invalid customer index ${stop.customer_index}`);
@@ -111,7 +118,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       const prevCoords =
         i === 0
           ? startCoords
-          : toRoutingCoords(rawCustomers[reorderedStops[i - 1].customer_index]);
+          : toRoutingCoords(customers[reorderedStops[i - 1].customer_index]);
 
       const leg = await getDirectionsLeg(
         prevCoords,
@@ -148,8 +155,8 @@ export async function POST(req: NextRequest, { params }: Params) {
           lastStop &&
           typeof lastStop.customer_index === "number" &&
           lastStop.customer_index >= 0 &&
-          lastStop.customer_index < rawCustomers.length
-            ? rawCustomers[lastStop.customer_index]
+          lastStop.customer_index < customers.length
+            ? customers[lastStop.customer_index]
             : undefined;
         if (lastCustomer) {
           const lastCoords = toRoutingCoords(lastCustomer);

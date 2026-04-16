@@ -24,6 +24,10 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { DeliveryRun, DeliveryCustomer, OptimizedStop } from "@/types/delivery-run";
 import { formatLabelsExportFilename } from "@/lib/export-filename";
+import {
+  getManualReorderValidationMessage,
+  parseFixedStopValue,
+} from "@/lib/validation/fixed-stop-position";
 
 const RouteMap = dynamic(
   () => import("@/components/run-details/RouteMap"),
@@ -977,6 +981,7 @@ function RunDetailsContent() {
       {reorderModalOpen && (
         <ManuallyReorderModal
           stops={reorderStops}
+          customers={run?.customers ?? []}
           onReorder={setReorderStops}
           onApply={handleApplyReorder}
           onClose={handleCancelReorder}
@@ -1145,7 +1150,22 @@ function CustomerStopCard({
   );
 }
 
-function SortableStopRow({ stop, index }: { stop: OptimizedStop; index: number }) {
+function SortableStopRow({
+  stop,
+  index,
+  customers,
+}: {
+  stop: OptimizedStop;
+  index: number;
+  customers: DeliveryCustomer[];
+}) {
+  const ci = stop.customer_index;
+  const parsed =
+    typeof ci === "number" && ci >= 0 && ci < customers.length
+      ? parseFixedStopValue(customers[ci].fixed_stop_position)
+      : { ok: true as const, value: null as number | null };
+  const fixedLocked = parsed.ok && parsed.value !== null;
+
   const {
     attributes,
     listeners,
@@ -1153,7 +1173,7 @@ function SortableStopRow({ stop, index }: { stop: OptimizedStop; index: number }
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: index });
+  } = useSortable({ id: index, disabled: fixedLocked });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -1168,10 +1188,18 @@ function SortableStopRow({ stop, index }: { stop: OptimizedStop; index: number }
     >
       <button
         type="button"
-        className="min-w-[44px] min-h-[44px] flex items-center justify-center cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 touch-none rounded-lg hover:bg-slate-100"
-        aria-label={`Drag to reorder stop ${index + 1}`}
+        className={`min-w-[44px] min-h-[44px] flex items-center justify-center touch-none rounded-lg ${
+          fixedLocked
+            ? "cursor-not-allowed text-slate-300 bg-slate-50"
+            : "cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+        }`}
+        aria-label={
+          fixedLocked
+            ? `Stop ${index + 1} has a fixed position and cannot be moved`
+            : `Drag to reorder stop ${index + 1}`
+        }
         {...attributes}
-        {...listeners}
+        {...(fixedLocked ? {} : listeners)}
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
           <path d="M8 6h2v2H8V6zm0 5h2v2H8v-2zm0 5h2v2H8v-2zm5-10h2v2h-2V6zm0 5h2v2h-2v-2zm0 5h2v2h-2v-2z" />
@@ -1181,7 +1209,14 @@ function SortableStopRow({ stop, index }: { stop: OptimizedStop; index: number }
         {index + 1}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="font-semibold text-sm text-slate-900">{stop.customer_name}</p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="font-semibold text-sm text-slate-900">{stop.customer_name}</p>
+          {fixedLocked && (
+            <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">
+              Fixed
+            </span>
+          )}
+        </div>
         {stop.customer_address && (
           <p className="text-xs text-slate-500 truncate">{stop.customer_address}</p>
         )}
@@ -1192,17 +1227,21 @@ function SortableStopRow({ stop, index }: { stop: OptimizedStop; index: number }
 
 function ManuallyReorderModal({
   stops,
+  customers,
   onReorder,
   onApply,
   onClose,
   recalculating,
 }: {
   stops: OptimizedStop[];
+  customers: DeliveryCustomer[];
   onReorder: (stops: OptimizedStop[]) => void;
   onApply: () => void;
   onClose: () => void;
   recalculating: boolean;
 }) {
+  const [reorderError, setReorderError] = useState<string | null>(null);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
@@ -1210,11 +1249,18 @@ function ManuallyReorderModal({
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
+    setReorderError(null);
     if (over && active.id !== over.id) {
       const oldIndex = Number(active.id);
       const newIndex = Number(over.id);
       if (!Number.isNaN(oldIndex) && !Number.isNaN(newIndex) && oldIndex >= 0 && newIndex < stops.length) {
-        onReorder(arrayMove(stops, oldIndex, newIndex));
+        const next = arrayMove(stops, oldIndex, newIndex);
+        const msg = getManualReorderValidationMessage(next, customers);
+        if (msg) {
+          setReorderError(msg);
+          return;
+        }
+        onReorder(next);
       }
     }
   }
@@ -1229,6 +1275,11 @@ function ManuallyReorderModal({
           <p className="text-slate-600 text-sm mt-1">
             Drag stops to change the delivery sequence. ETAs and distances will be recalculated.
           </p>
+          {reorderError && (
+            <p className="text-sm text-red-600 mt-2" role="alert">
+              {reorderError}
+            </p>
+          )}
         </div>
         <div className="p-5 sm:p-6 overflow-y-auto flex-1">
           <DndContext
@@ -1246,6 +1297,7 @@ function ManuallyReorderModal({
                     key={`${stop.customer_index}-${stop.customer_name}-${stop.customer_address}`}
                     stop={stop}
                     index={i}
+                    customers={customers}
                   />
                 ))}
               </div>

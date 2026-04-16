@@ -5,6 +5,7 @@ import { DeliveryRunModel } from "@/models/DeliveryRun";
 import { json, handleApiError } from "@/lib/http/response";
 import { badRequest, notFound } from "@/lib/http/errors";
 import { assertSaveGate } from "@/lib/validation/save-gates";
+import { assertFixedStopPositionsValid } from "@/lib/validation/fixed-stop-position";
 import { geocodeAddress } from "@/lib/google/geocoding";
 import { requireAdminSession } from "@/lib/auth/requireAdmin";
 import {
@@ -72,6 +73,7 @@ export async function PUT(request: NextRequest, { params }: Params) {
 
     const customers = sanitizeCustomers(body.customers ?? run.customers);
     assertSaveGate(customers);
+    assertFixedStopPositionsValid(customers);
 
     const updates: Record<string, unknown> = {};
     const allowed = [
