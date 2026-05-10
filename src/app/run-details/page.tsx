@@ -28,11 +28,14 @@ import {
   getManualReorderValidationMessage,
   parseFixedStopValue,
 } from "@/lib/validation/fixed-stop-position";
+import { BroadcastSmsModal, BROADCAST_SMS_MAX_CHARS } from "@/components/runs/BroadcastSmsModal";
 
 const RouteMap = dynamic(
   () => import("@/components/run-details/RouteMap"),
   { ssr: false, loading: () => <div className="h-[420px] w-full rounded-xl bg-slate-100 animate-pulse flex items-center justify-center text-slate-500 text-sm">Loading map…</div> }
 );
+
+const EMPTY_CUSTOMERS: DeliveryCustomer[] = [];
 
 /** Copy text to clipboard. Uses execCommand fallback when Clipboard API fails (e.g. after async). */
 function copyToClipboard(text: string): Promise<boolean> {
@@ -441,12 +444,22 @@ function RunDetailsContent() {
     address: "",
     quantity: 2,
   });
+  const [broadcastModalOpen, setBroadcastModalOpen] = useState(false);
+  const [broadcastText, setBroadcastText] = useState("");
+  const [broadcastSending, setBroadcastSending] = useState(false);
+  const [broadcastFeedback, setBroadcastFeedback] = useState<string | null>(null);
 
   useEffect(() => {
     if (!copyLinkSuccess) return;
     const t = setTimeout(() => setCopyLinkSuccess(false), 2500);
     return () => clearTimeout(t);
   }, [copyLinkSuccess]);
+
+  useEffect(() => {
+    if (!broadcastFeedback) return;
+    const t = setTimeout(() => setBroadcastFeedback(null), 10000);
+    return () => clearTimeout(t);
+  }, [broadcastFeedback]);
 
   useEffect(() => {
     if (!driverLinkModal) return;
@@ -562,7 +575,7 @@ function RunDetailsContent() {
     const stop = run.optimized_route.stops[stopIndex];
     if (!stop || typeof stop.customer_index !== "number") return;
     const custIdx = stop.customer_index;
-    const customers = run.customers ?? [];
+    const customers = run.customers ?? EMPTY_CUSTOMERS;
     if (custIdx < 0 || custIdx >= customers.length) return;
 
     setError(null);
@@ -724,6 +737,91 @@ function RunDetailsContent() {
     }
   }
 
+  async function handleSendBroadcastSms(payload: {
+    message: string;
+    customer_indices: number[];
+  }) {
+    if (!id) return;
+    const trimmed = payload.message;
+    const customer_indices = payload.customer_indices;
+    if (
+      !trimmed ||
+      trimmed.length > BROADCAST_SMS_MAX_CHARS ||
+      customer_indices.length === 0
+    )
+      return;
+
+    setBroadcastSending(true);
+    setError(null);
+    setBroadcastFeedback(null);
+    try {
+      const res = await fetch(`/api/delivery-runs/${id}/broadcast-sms`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ message: trimmed, customer_indices }),
+      });
+
+      let data: {
+        error?: string;
+        total_sent?: number;
+        total_failed?: number;
+        failed_customers?: Array<{ customer_name: string; error?: string }>;
+        message?: string;
+      };
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error("Invalid response from server");
+      }
+
+      if (res.status === 401) {
+        window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Broadcast failed");
+      }
+
+      const total_sent = data.total_sent ?? 0;
+      const total_failed = data.total_failed ?? 0;
+      const failed_customers = data.failed_customers ?? [];
+
+      setBroadcastModalOpen(false);
+      setBroadcastText("");
+
+      if (total_sent === 0) {
+        const hint = failed_customers
+          .slice(0, 5)
+          .map((f) => `${f.customer_name}: ${f.error ?? "skipped"}`)
+          .join(" · ");
+        setError(
+          `No SMS were sent.${hint ? ` ${hint}` : data.message ? ` ${data.message}` : ""}`
+        );
+        return;
+      }
+
+      if (total_failed === 0) {
+        setBroadcastFeedback(
+          `Broadcast sent to ${total_sent} phone number${total_sent !== 1 ? "s" : ""}.`
+        );
+      } else {
+        const preview = failed_customers
+          .slice(0, 3)
+          .map((f) => `${f.customer_name} (${f.error ?? "failed"})`)
+          .join("; ");
+        setBroadcastFeedback(
+          `Sent ${total_sent}; ${total_failed} failed.${preview ? ` Examples: ${preview}` : ""}`
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Broadcast failed");
+    } finally {
+      setBroadcastSending(false);
+    }
+  }
+
   async function handleCopyDriverLink() {
     if (!id) return;
     setError(null);
@@ -807,7 +905,7 @@ function RunDetailsContent() {
   const isDraft = run.status === "draft";
   const stops = run.optimized_route?.stops ?? [];
   const totals = run.optimized_route;
-  const customers = run.customers ?? [];
+  const customers = run.customers ?? EMPTY_CUSTOMERS;
 
   return (
     <main className="min-h-screen bg-blue-50/50">
@@ -876,6 +974,20 @@ function RunDetailsContent() {
           >
             <span aria-hidden>✏️</span> Edit Run
           </Link>
+          {customers.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setBroadcastModalOpen(true);
+                setBroadcastText("");
+                setError(null);
+                setBroadcastFeedback(null);
+              }}
+              className="min-h-[44px] px-4 py-2.5 border border-violet-200 rounded-xl hover:bg-violet-50 hover:border-violet-300 flex items-center justify-center gap-2 text-sm font-medium text-violet-800 transition-colors"
+            >
+              <span aria-hidden>💬</span> Send Broadcast
+            </button>
+          )}
           {isDraft && (
             <button
               type="button"
@@ -959,6 +1071,13 @@ function RunDetailsContent() {
         </div>
       )}
 
+      {broadcastFeedback && (
+        <div className="mx-4 sm:mx-6 mt-4 p-4 border border-violet-200 bg-violet-50 text-violet-900 rounded-xl flex items-start gap-3">
+          <span aria-hidden className="text-lg">💬</span>
+          <span className="flex-1">{broadcastFeedback}</span>
+        </div>
+      )}
+
       {labelsModalOpen && (
         <ExportLabelsModal
           stops={stops}
@@ -986,6 +1105,20 @@ function RunDetailsContent() {
           onApply={handleApplyReorder}
           onClose={handleCancelReorder}
           recalculating={recalculatingReorder}
+        />
+      )}
+
+      {broadcastModalOpen && (
+        <BroadcastSmsModal
+          customers={customers}
+          message={broadcastText}
+          setMessage={setBroadcastText}
+          sending={broadcastSending}
+          onClose={() => {
+            if (broadcastSending) return;
+            setBroadcastModalOpen(false);
+          }}
+          onSend={handleSendBroadcastSms}
         />
       )}
 
