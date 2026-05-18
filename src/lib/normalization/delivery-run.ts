@@ -9,6 +9,30 @@ function omitPriority<T extends UnknownRecord>(input: T): Omit<T, "priority"> {
   return rest;
 }
 
+const MAX_ORDER_ID_LEN = 64;
+
+/**
+ * Single cleanup point for Kapioo order IDs (seed AND SSOT).
+ * Trim, drop empties, dedupe preserving first occurrence, cap each ID at 64 chars,
+ * drop the field entirely when no IDs remain so it stays `undefined` instead of `[]`.
+ */
+export function normalizeOrderIds(value: unknown): string[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value)) return undefined;
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of value) {
+    if (typeof raw !== "string") continue;
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const capped = trimmed.length > MAX_ORDER_ID_LEN ? trimmed.slice(0, MAX_ORDER_ID_LEN) : trimmed;
+    if (seen.has(capped)) continue;
+    seen.add(capped);
+    out.push(capped);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 export function sanitizeCustomer(
   customer: DeliveryCustomer | UnknownRecord
 ): DeliveryCustomer {
@@ -16,6 +40,12 @@ export function sanitizeCustomer(
   const p = parseFixedStopValue(base.fixed_stop_position);
   if (!p.ok) throw validationError(p.message);
   base.fixed_stop_position = p.value;
+  const cleanedIds = normalizeOrderIds(base.order_ids);
+  if (cleanedIds === undefined) {
+    delete base.order_ids;
+  } else {
+    base.order_ids = cleanedIds;
+  }
   return base as unknown as DeliveryCustomer;
 }
 
@@ -26,7 +56,16 @@ export function sanitizeCustomers(
 }
 
 export function sanitizeStop(stop: OptimizedStop | UnknownRecord): OptimizedStop {
-  return omitPriority(stop as UnknownRecord) as unknown as OptimizedStop;
+  const base = omitPriority(stop as UnknownRecord) as UnknownRecord;
+  if ("order_ids" in base) {
+    const cleanedIds = normalizeOrderIds(base.order_ids);
+    if (cleanedIds === undefined) {
+      delete base.order_ids;
+    } else {
+      base.order_ids = cleanedIds;
+    }
+  }
+  return base as unknown as OptimizedStop;
 }
 
 export function sanitizeStops(

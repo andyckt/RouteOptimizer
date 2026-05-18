@@ -22,6 +22,38 @@ export interface DeliveryCustomer {
   nearby_lng?: number;
   /** Admin-only: exact 1-based position in the final optimized stop list; null/omit = flexible. */
   fixed_stop_position?: number | null;
+  /**
+   * Kapioo order IDs — CREATE-TIME SEED ONLY.
+   * Populated by the 4-column paste parser. Copied to `OptimizedStop.order_ids`
+   * on the first optimization. After that, the stop value wins on re-optimizations
+   * and is the only field read at sync/retry time. Do NOT read this at sync time.
+   */
+  order_ids?: string[];
+}
+
+/** Outcome of pushing a completed stop to Kapioo Admin's POD ingestion endpoint. */
+export type KapiooSyncStatus = "skipped" | "success" | "partial" | "failed";
+
+export type KapiooSyncReason =
+  | "no-order-ids"
+  | "missing-env"
+  | "pod-not-r2-url"
+  | "non-r2-dev-url"
+  | "admin-api-timeout"
+  | "admin-api-401"
+  | "admin-api-400"
+  | "admin-api-5xx"
+  | "partial-success";
+
+export interface KapiooSyncState {
+  status: KapiooSyncStatus;
+  reason?: KapiooSyncReason;
+  attempted_at?: string;
+  updated_order_ids?: string[];
+  skipped_order_ids?: string[];
+  missing_order_ids?: string[];
+  error_message?: string;
+  attempts?: number;
 }
 
 export interface OptimizedStop {
@@ -45,6 +77,14 @@ export interface OptimizedStop {
   proof_short_url?: string;
   sms_message_text?: string;
   sms_sent_at?: string;
+  /**
+   * Kapioo order IDs — SOURCE OF TRUTH for Kapioo Admin sync.
+   * Read at completion and retry. Editable only via the run-details stop card.
+   * Empty/undefined means this stop is intentionally not a Kapioo order.
+   */
+  order_ids?: string[];
+  /** Last Kapioo Admin sync attempt outcome (admin-side surface only). */
+  kapioo_sync?: KapiooSyncState;
 }
 
 export interface OptimizedRoute {

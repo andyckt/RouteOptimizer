@@ -435,6 +435,7 @@ function RunDetailsContent() {
   const [error, setError] = useState<string | null>(null);
   const [editingStopIndex, setEditingStopIndex] = useState<number | null>(null);
   const [savingStopIndex, setSavingStopIndex] = useState<number | null>(null);
+  const [retryingKapiooSyncIndex, setRetryingKapiooSyncIndex] = useState<number | null>(null);
   const [driverLinkModal, setDriverLinkModal] = useState<{ url: string } | null>(null);
   const [cachedDriverLink, setCachedDriverLink] = useState<string | null>(null);
   const [copyLinkSuccess, setCopyLinkSuccess] = useState(false);
@@ -569,7 +570,13 @@ function RunDetailsContent() {
 
   async function handleUpdateStop(
     stopIndex: number,
-    updates: { customer_name?: string; customer_phone?: string; notes?: string }
+    updates: {
+      customer_name?: string;
+      customer_phone?: string;
+      notes?: string;
+      /** SSOT for Kapioo sync. Writes only to the stop; never propagates to customer. */
+      order_ids?: string[];
+    }
   ) {
     if (!id || !run?.optimized_route?.stops) return;
     const stop = run.optimized_route.stops[stopIndex];
@@ -588,6 +595,9 @@ function RunDetailsContent() {
               customer_name: updates.customer_name ?? s.customer_name,
               customer_phone: updates.customer_phone ?? s.customer_phone,
               notes: updates.notes !== undefined ? updates.notes : s.notes,
+              ...(updates.order_ids !== undefined
+                ? { order_ids: updates.order_ids.length > 0 ? updates.order_ids : undefined }
+                : {}),
             }
           : s
       );
@@ -598,6 +608,7 @@ function RunDetailsContent() {
               name: updates.customer_name ?? c.name,
               phone: updates.customer_phone ?? c.phone,
               notes: updates.notes !== undefined ? updates.notes : c.notes,
+              // intentionally NOT writing order_ids to the customer record.
             }
           : c
       );
@@ -620,6 +631,34 @@ function RunDetailsContent() {
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
       setSavingStopIndex(null);
+    }
+  }
+
+  async function handleRetryKapiooSync(stopIndex: number) {
+    if (!id || retryingKapiooSyncIndex !== null) return;
+    setError(null);
+    setRetryingKapiooSyncIndex(stopIndex);
+    try {
+      const res = await fetch(`/api/delivery-runs/${id}/sync-stop-to-kapioo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ stopIndex }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          (data && typeof data.error === "string" && data.error) ||
+            `Failed to retry Kapioo sync (HTTP ${res.status})`
+        );
+      }
+      if (data && typeof data === "object" && "run" in data && data.run) {
+        setRun(data.run as DeliveryRun);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to retry Kapioo sync");
+    } finally {
+      setRetryingKapiooSyncIndex(null);
     }
   }
 
@@ -1228,6 +1267,8 @@ function RunDetailsContent() {
                         onEdit={() => setEditingStopIndex(i)}
                         onDone={(updates) => handleUpdateStop(i, updates)}
                         onCancel={() => setEditingStopIndex(null)}
+                        onRetryKapiooSync={() => handleRetryKapiooSync(i)}
+                        retryingKapiooSync={retryingKapiooSyncIndex === i}
                       />
                     ))}
                   </div>
@@ -1493,6 +1534,118 @@ function ProofOfDeliveryPreview({ urls }: { urls: string[] }) {
   );
 }
 
+function parseOrderIdsInput(raw: string): string[] {
+  return raw
+    .split(/[,;\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function KapiooSyncIndicator({
+  stop,
+  onRetry,
+  retrying,
+}: {
+  stop: OptimizedStop;
+  onRetry?: () => void;
+  retrying?: boolean;
+}) {
+  if (!stop.completed) return null;
+  const sync = stop.kapioo_sync;
+  const hasOrderIds = Array.isArray(stop.order_ids) && stop.order_ids.length > 0;
+
+  let label: string;
+  let detail: string | null = null;
+  let chipClass: string;
+  let showRetry = false;
+
+  if (!sync) {
+    if (!hasOrderIds) {
+      label = "Kapioo: not a Kapioo order";
+      chipClass = "bg-slate-100 text-slate-700 border-slate-200";
+    } else {
+      label = "Kapioo: not yet synced";
+      chipClass = "bg-slate-100 text-slate-700 border-slate-200";
+      showRetry = true;
+    }
+  } else if (sync.status === "success") {
+    label = "Kapioo: synced";
+    chipClass = "bg-emerald-50 text-emerald-800 border-emerald-200";
+  } else if (sync.status === "skipped") {
+    if (sync.reason === "no-order-ids") {
+      label = "Kapioo: not synced (no order IDs)";
+    } else if (sync.reason === "non-r2-dev-url") {
+      label = "Kapioo: skipped (dev URL)";
+    } else {
+      label = "Kapioo: skipped";
+    }
+    chipClass = "bg-slate-100 text-slate-700 border-slate-200";
+  } else if (sync.status === "partial") {
+    const missing = sync.missing_order_ids?.length ?? 0;
+    const skipped = sync.skipped_order_ids?.length ?? 0;
+    const parts: string[] = [];
+    if (missing > 0) parts.push(`${missing} missing`);
+    if (skipped > 0) parts.push(`${skipped} already terminal`);
+    label = `Kapioo: partial${parts.length ? ` — ${parts.join(", ")}` : ""}`;
+    chipClass = "bg-amber-50 text-amber-900 border-amber-200";
+    showRetry = true;
+  } else {
+    const reason = sync.reason ?? "unknown";
+    label = `Kapioo: failed (${reason})`;
+    detail = sync.error_message ?? null;
+    chipClass = "bg-rose-50 text-rose-800 border-rose-200";
+    showRetry = true;
+  }
+
+  return (
+    <div className="mt-2 space-y-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${chipClass}`}
+        >
+          {label}
+        </span>
+        {showRetry && onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            disabled={retrying}
+            className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {retrying ? "Retrying…" : "Retry sync"}
+          </button>
+        )}
+        {sync?.attempts && sync.attempts > 1 && (
+          <span className="text-xs text-slate-500">{sync.attempts} attempts</span>
+        )}
+      </div>
+      {detail && <p className="text-xs text-rose-700 break-words">{detail}</p>}
+      {sync?.status === "partial" && (
+        <KapiooSyncBreakdown sync={sync} />
+      )}
+    </div>
+  );
+}
+
+function KapiooSyncBreakdown({ sync }: { sync: NonNullable<OptimizedStop["kapioo_sync"]> }) {
+  const groups: Array<{ label: string; ids: string[] | undefined; tone: string }> = [
+    { label: "Updated", ids: sync.updated_order_ids, tone: "text-emerald-800" },
+    { label: "Already terminal", ids: sync.skipped_order_ids, tone: "text-slate-700" },
+    { label: "Not found in Kapioo", ids: sync.missing_order_ids, tone: "text-rose-800" },
+  ];
+  return (
+    <ul className="text-xs space-y-0.5">
+      {groups
+        .filter((g) => g.ids && g.ids.length > 0)
+        .map((g) => (
+          <li key={g.label} className={g.tone}>
+            <span className="font-medium">{g.label}:</span> {g.ids!.join(", ")}
+          </li>
+        ))}
+    </ul>
+  );
+}
+
 function OptimizedStopCard({
   stop,
   index,
@@ -1502,6 +1655,8 @@ function OptimizedStopCard({
   onEdit,
   onDone,
   onCancel,
+  onRetryKapiooSync,
+  retryingKapiooSync,
 }: {
   stop: OptimizedStop;
   index: number;
@@ -1513,20 +1668,25 @@ function OptimizedStopCard({
     customer_name: string;
     customer_phone: string;
     notes?: string;
+    order_ids?: string[];
   }) => void;
   onCancel?: () => void;
+  onRetryKapiooSync?: () => void;
+  retryingKapiooSync?: boolean;
 }) {
   const [draftName, setDraftName] = useState(stop.customer_name ?? "");
   const [draftPhone, setDraftPhone] = useState(stop.customer_phone ?? "");
   const [draftNotes, setDraftNotes] = useState(stop.notes ?? "");
+  const [draftOrderIds, setDraftOrderIds] = useState((stop.order_ids ?? []).join(", "));
 
   useEffect(() => {
     if (isEditing) {
       setDraftName(stop.customer_name ?? "");
       setDraftPhone(stop.customer_phone ?? "");
       setDraftNotes(stop.notes ?? "");
+      setDraftOrderIds((stop.order_ids ?? []).join(", "));
     }
-  }, [isEditing, stop.customer_name, stop.customer_phone, stop.notes]);
+  }, [isEditing, stop.customer_name, stop.customer_phone, stop.notes, stop.order_ids]);
 
   const hasEditHandlers = onEdit && onDone && onCancel && typeof stopIndex === "number";
 
@@ -1536,6 +1696,7 @@ function OptimizedStopCard({
       customer_name: draftName.trim(),
       customer_phone: draftPhone.trim(),
       notes: draftNotes.trim() || undefined,
+      order_ids: parseOrderIdsInput(draftOrderIds),
     });
   }
 
@@ -1613,6 +1774,25 @@ function OptimizedStopCard({
                   placeholder="Buzz code, instructions..."
                 />
               </div>
+              <div>
+                <label
+                  htmlFor={`order-ids-${stopIndex ?? "x"}`}
+                  className="block text-xs font-medium text-slate-600 mb-0.5"
+                >
+                  Kapioo order IDs
+                </label>
+                <input
+                  id={`order-ids-${stopIndex ?? "x"}`}
+                  type="text"
+                  value={draftOrderIds}
+                  onChange={(e) => setDraftOrderIds(e.target.value)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g. ORD-1234, ORD-5678"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Source of truth for Kapioo Admin sync. Leave empty for non-Kapioo stops.
+                </p>
+              </div>
               <p className="text-sm text-slate-500 flex items-start gap-1">
                 <span aria-hidden className="flex-shrink-0">📍</span>
                 <span>{stop.customer_address}</span>
@@ -1676,6 +1856,17 @@ function OptimizedStopCard({
                   <p className="text-sm text-amber-900">{stop.notes}</p>
                 </div>
               )}
+              {Array.isArray(stop.order_ids) && stop.order_ids.length > 0 && (
+                <p className="mt-2 text-xs text-slate-600">
+                  <span className="font-medium">Kapioo order IDs:</span>{" "}
+                  <span className="font-mono break-all">{stop.order_ids.join(", ")}</span>
+                </p>
+              )}
+              <KapiooSyncIndicator
+                stop={stop}
+                onRetry={onRetryKapiooSync}
+                retrying={retryingKapiooSync}
+              />
               <ProofOfDeliveryPreview
                 urls={stop.completed ? (stop.proof_of_delivery_images ?? []) : []}
               />

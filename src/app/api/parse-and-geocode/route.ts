@@ -8,7 +8,7 @@ import { sanitizeCustomers } from "@/lib/normalization/delivery-run";
 import { requireAdminSession } from "@/lib/auth/requireAdmin";
 
 function toDeliveryCustomer(
-  p: { name: string; address: string; phone: string; notes: string }
+  p: { name: string; address: string; phone: string; notes: string; order_ids?: string[] }
 ): DeliveryCustomer {
   return {
     name: p.name,
@@ -18,6 +18,7 @@ function toDeliveryCustomer(
     is_first_stop: false,
     is_end_point: false,
     geocode_status: "pending",
+    ...(p.order_ids && p.order_ids.length > 0 ? { order_ids: p.order_ids } : {}),
   };
 }
 

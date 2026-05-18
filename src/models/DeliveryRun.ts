@@ -23,6 +23,25 @@ const customerSchema = new Schema<DeliveryCustomer>(
     nearby_lat: { type: Number },
     nearby_lng: { type: Number },
     fixed_stop_position: { type: Number, default: null },
+    // Create-time seed only. Sync/retry reads OptimizedStop.order_ids, never this.
+    order_ids: { type: [String], default: undefined },
+  },
+  { _id: false }
+);
+
+const kapiooSyncSchema = new Schema(
+  {
+    status: {
+      type: String,
+      enum: ["skipped", "success", "partial", "failed"],
+    },
+    reason: { type: String },
+    attempted_at: { type: String },
+    updated_order_ids: { type: [String], default: undefined },
+    skipped_order_ids: { type: [String], default: undefined },
+    missing_order_ids: { type: [String], default: undefined },
+    error_message: { type: String },
+    attempts: { type: Number },
   },
   { _id: false }
 );
@@ -49,6 +68,9 @@ const optimizedStopSchema = new Schema(
     proof_short_url: { type: String },
     sms_message_text: { type: String },
     sms_sent_at: { type: String },
+    // SSOT for Kapioo Admin sync.
+    order_ids: { type: [String], default: undefined },
+    kapioo_sync: { type: kapiooSyncSchema, default: undefined },
   },
   { _id: false }
 );

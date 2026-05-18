@@ -11,7 +11,8 @@ import { sendSms } from "@/lib/openphone/client";
 import { getServerEnv } from "@/lib/env";
 import { getR2ConfigFromEnv } from "@/lib/r2/client";
 import { toE164NorthAmerica } from "@/lib/phone/e164";
-import type { OptimizedStop } from "@/types/delivery-run";
+import type { KapiooSyncState, OptimizedStop } from "@/types/delivery-run";
+import { runKapiooSync } from "@/lib/kapioo/sync";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -227,38 +228,124 @@ export async function POST(req: NextRequest, { params }: Params) {
         smsTo: toE164 ? "sent" : "skipped",
       })
     );
-    if (toE164) {
-      const smsResult = await sendSms({
-        from: OPENPHONE_FROM,
-        toE164,
-        content: DELIVERED_SMS,
-      });
-      if (!smsResult.success) {
+
+    // Run SMS and Kapioo Admin sync in parallel so driver latency stays close to
+    // max(SMS, Kapioo) rather than sum. Both are tolerant to failure: neither can
+    // roll back the local completion that already succeeded above.
+    const smsPromise =
+      toE164
+        ? sendSms({
+            from: OPENPHONE_FROM,
+            toE164,
+            content: DELIVERED_SMS,
+          })
+        : Promise.resolve({ success: true as const });
+
+    const kapiooStop = (routeAfter?.stops?.[stopIndex] ?? stop) as OptimizedStop;
+    const kapiooPromise = runKapiooSync({
+      runId: id,
+      stopIndex,
+      stop: kapiooStop,
+      driverName: typeof updatedRun.driver_name === "string" ? updatedRun.driver_name : undefined,
+      // First completion path: no prior attempts. The retry endpoint reads existing attempts itself.
+      priorAttempts: 0,
+    });
+
+    const [smsSettled, kapiooSettled] = await Promise.allSettled([smsPromise, kapiooPromise]);
+
+    // Persist the Kapioo sync outcome. We only attempt the field write for the first-completion
+    // branch; concurrent retries that hit the idempotent branch above return early without
+    // touching kapioo_sync, so they don't clobber a successful prior write.
+    let kapiooSync: KapiooSyncState | null = null;
+    if (kapiooSettled.status === "fulfilled") {
+      kapiooSync = kapiooSettled.value;
+    } else {
+      // Defensive: runKapiooSync never throws, but if something escaped, record it.
+      const reason = "admin-api-5xx" as const;
+      kapiooSync = {
+        status: "failed",
+        reason,
+        attempted_at: new Date().toISOString(),
+        attempts: 1,
+        error_message:
+          kapiooSettled.reason instanceof Error
+            ? kapiooSettled.reason.message
+            : String(kapiooSettled.reason ?? "Unknown error"),
+      };
+    }
+    if (kapiooSync) {
+      try {
+        await DeliveryRunModel.updateOne(
+          { _id: id },
+          { $set: { [prefix + ".kapioo_sync"]: kapiooSync } }
+        );
+      } catch (persistErr) {
+        // Logging only — failing to write the audit field must not fail the driver request.
         console.error(
           JSON.stringify({
-            event: "complete_with_proof_sms_failed",
+            event: "complete_with_proof_kapioo_persist_failed",
             reqId,
             runId: id,
-            toE164,
-            error: smsResult.error,
+            stopIndex,
+            error:
+              persistErr instanceof Error ? persistErr.message : String(persistErr),
           })
         );
-        const doc = updatedRun.toObject() as {
-          _id: { toString(): string };
-          [k: string]: unknown;
-        };
-        return json({
-          run: { ...sanitizeRunForResponse(doc), _id: doc._id.toString() },
-          delivered_sms_sent: false,
-          delivered_sms_error: smsResult.error,
-        });
       }
+      console.log(
+        JSON.stringify({
+          event: "complete_with_proof_kapioo_sync",
+          reqId,
+          runId: id,
+          stopIndex,
+          status: kapiooSync.status,
+          reason: kapiooSync.reason,
+          updated: kapiooSync.updated_order_ids?.length ?? 0,
+          skipped: kapiooSync.skipped_order_ids?.length ?? 0,
+          missing: kapiooSync.missing_order_ids?.length ?? 0,
+        })
+      );
     }
 
-    const doc = updatedRun.toObject() as {
+    let smsSuccess = true;
+    let smsError: string | undefined;
+    if (smsSettled.status === "fulfilled") {
+      if (!smsSettled.value.success) {
+        smsSuccess = false;
+        smsError = smsSettled.value.error;
+      }
+    } else {
+      smsSuccess = false;
+      smsError =
+        smsSettled.reason instanceof Error
+          ? smsSettled.reason.message
+          : String(smsSettled.reason);
+    }
+    if (toE164 && !smsSuccess) {
+      console.error(
+        JSON.stringify({
+          event: "complete_with_proof_sms_failed",
+          reqId,
+          runId: id,
+          toE164,
+          error: smsError,
+        })
+      );
+    }
+
+    // Re-read to include the freshly-persisted kapioo_sync field in the response.
+    const finalRun = (await DeliveryRunModel.findById(id).lean()) ?? updatedRun.toObject();
+    const doc = finalRun as {
       _id: { toString(): string };
       [k: string]: unknown;
     };
+    if (toE164 && !smsSuccess) {
+      return json({
+        run: { ...sanitizeRunForResponse(doc), _id: doc._id.toString() },
+        delivered_sms_sent: false,
+        delivered_sms_error: smsError,
+      });
+    }
     return json({
       run: { ...sanitizeRunForResponse(doc), _id: doc._id.toString() },
       ...(toE164 && { delivered_sms_sent: true }),

@@ -60,6 +60,13 @@ export interface ComputeRouteFromSequenceParams {
   /** When set and hasEndPointCustomer is false, add return leg from last stop to this location. */
   endLocationCoords?: LatLng | null;
   hasEndPointCustomer: boolean;
+  /**
+   * Existing optimized stops from the previous route (if any). Used solely to preserve
+   * `order_ids` on the freshly-built stops, so admin edits to `stop.order_ids` survive
+   * re-optimization. Lookup is by `customer_index`. When no match exists, we seed once
+   * from `customer.order_ids`. After this snapshot, `customer.order_ids` is never read again.
+   */
+  priorStops?: OptimizedStop[];
 }
 
 /**
@@ -85,10 +92,24 @@ export async function computeOptimizedRouteFromSequence(
     startCoords,
     endLocationCoords,
     hasEndPointCustomer,
+    priorStops,
   } = params;
 
   if (customerIndicesInOrder.length === 0) {
     throw validationError("No valid customers to build a route.");
+  }
+
+  const priorOrderIdsByCustomer = new Map<number, string[]>();
+  if (priorStops) {
+    for (const ps of priorStops) {
+      if (
+        typeof ps?.customer_index === "number" &&
+        Array.isArray(ps.order_ids) &&
+        ps.order_ids.length > 0
+      ) {
+        priorOrderIdsByCustomer.set(ps.customer_index, [...ps.order_ids]);
+      }
+    }
   }
 
   let currentTime = new Date(`${run.run_date}T${run.start_time}:00`);
@@ -123,6 +144,17 @@ export async function computeOptimizedRouteFromSequence(
     const durationMin = round2(leg.durationSeconds / 60);
     currentTime = addMinutes(currentTime, durationMin);
 
+    // Preserve admin edits to stop.order_ids across re-optimizations; otherwise seed once
+    // from customer.order_ids. After this point, customer.order_ids is never read again.
+    const priorIds = priorOrderIdsByCustomer.get(custIdx);
+    const seedIds = customer.order_ids;
+    const resolvedOrderIds =
+      priorIds && priorIds.length > 0
+        ? priorIds
+        : Array.isArray(seedIds) && seedIds.length > 0
+          ? [...seedIds]
+          : undefined;
+
     stops.push({
       customer_index: custIdx,
       customer_name: customer.name,
@@ -138,6 +170,7 @@ export async function computeOptimizedRouteFromSequence(
       using_nearby_location: routing.usingNearby,
       nearby_location_reference: routing.nearbyRef,
       completed: false,
+      ...(resolvedOrderIds ? { order_ids: resolvedOrderIds } : {}),
     });
 
     currentTime = addMinutes(currentTime, 5);

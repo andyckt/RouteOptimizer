@@ -4,7 +4,7 @@ import { connectDB } from "@/lib/mongodb";
 import { DeliveryRunModel } from "@/models/DeliveryRun";
 import { json, handleApiError } from "@/lib/http/response";
 import { badRequest, notFound, validationError } from "@/lib/http/errors";
-import type { DeliveryCustomer } from "@/types/delivery-run";
+import type { DeliveryCustomer, OptimizedStop } from "@/types/delivery-run";
 import { assertSaveGate } from "@/lib/validation/save-gates";
 import {
   assertFixedStopPositionsValid,
@@ -230,6 +230,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       finalOrder = fillSkeletonWithFlexibleOrder(skeleton, flexOrdered);
     }
 
+    const priorStops = (run.optimized_route?.stops ?? []) as OptimizedStop[];
+
     const computed = await computeOptimizedRouteFromSequence({
       customerIndicesInOrder: finalOrder,
       customers,
@@ -242,6 +244,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       startCoords,
       endLocationCoords: !endPoint ? endLocationCoords : undefined,
       hasEndPointCustomer: Boolean(endPoint),
+      priorStops,
     });
 
     run.customers = customers;
