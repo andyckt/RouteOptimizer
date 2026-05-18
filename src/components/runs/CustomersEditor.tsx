@@ -5,6 +5,10 @@ import { AddSingleCustomer } from "./AddSingleCustomer";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import type { DeliveryCustomer } from "@/types/delivery-run";
 import { getFixedStopPositionValidationMessage } from "@/lib/validation/fixed-stop-position";
+import {
+  CUSTOMER_PASTE_FORMAT_LINES,
+  CUSTOMER_PASTE_PLACEHOLDER,
+} from "@/lib/parsing/order-ids-input";
 
 export interface CustomerRow {
   name: string;
@@ -21,6 +25,7 @@ export interface CustomerRow {
   is_first_stop?: boolean;
   is_end_point?: boolean;
   fixed_stop_position?: number | null;
+  order_ids?: string[];
 }
 
 interface CustomersEditorProps {
@@ -158,14 +163,15 @@ export function CustomersEditor({
           Sheets, or any format. Each address will be automatically validated and
           geocoded.
         </p>
-        <p className="text-xs text-slate-500 mb-2">
-          Tab-delimited: Name [TAB] Address [TAB] Phone. Notes in parentheses
-          (e.g. Buzz code: 123) are extracted automatically.
-        </p>
+        <div className="text-xs text-slate-500 mb-2 space-y-1">
+          {CUSTOMER_PASTE_FORMAT_LINES.map((line) => (
+            <p key={line}>{line}</p>
+          ))}
+        </div>
         <textarea
           value={pastedText}
           onChange={(e) => setPastedText(e.target.value)}
-          placeholder={`John Smith\t123 Main St Toronto ON M5V 1A1\t4161234567\nJane Doe\tUnit 506 456 Queen St W\t4169876543`}
+          placeholder={CUSTOMER_PASTE_PLACEHOLDER}
           className="w-full border border-slate-200 rounded-xl px-4 py-3 h-24 font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           rows={4}
         />
@@ -209,6 +215,7 @@ export function CustomersEditor({
             <thead className="bg-slate-50 sticky top-0 border-b border-slate-200">
               <tr>
                 <th className="p-3 text-left text-slate-700 font-semibold w-12"></th>
+                <th className="p-3 text-left text-slate-700 font-semibold">Kapioo order IDs</th>
                 <th className="p-3 text-left text-slate-700 font-semibold">Name</th>
                 <th className="p-3 text-left text-slate-700 font-semibold">Address</th>
                 <th className="p-3 text-left text-slate-700 font-semibold">Phone</th>
@@ -314,6 +321,11 @@ export function CustomersEditor({
                         </button>
                       )}
                     </div>
+                  </td>
+                  <td className="p-3 align-top min-w-[140px]">
+                    <span className="text-slate-600 font-mono text-xs break-all">
+                      {c.order_ids?.length ? c.order_ids.join(", ") : "—"}
+                    </span>
                   </td>
                   <td className="p-3 align-top">
                     {editingIndex === i ? (

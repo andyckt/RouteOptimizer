@@ -1,9 +1,10 @@
 /**
- * Deterministic parser: tab-delimited Name[TAB]Address[TAB]Phone[TAB]OrderIds?.
+ * Deterministic parser — tab-delimited rows:
+ * - 4 columns: Kapioo order IDs (optional) [TAB] Name [TAB] Address [TAB] Phone
+ * - 3 columns: Name [TAB] Address [TAB] Phone (no Kapioo order IDs)
  * Preserves customer names exactly (including trailing "-####").
  * Phone normalized to digits only.
  * Extracts notes from address when it ends with (content), e.g. (Buzz code: 1504).
- * Optional 4th column: Kapioo order IDs separated by `,`, `;`, or whitespace.
  * Order IDs are a create-time seed for `customer.order_ids` only — never read at sync time.
  */
 
@@ -41,9 +42,20 @@ export function parseDeterministic(text: string): ParsedCustomer[] {
   const lines = text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
   const customers: ParsedCustomer[] = [];
   for (const line of lines) {
-    const parts = line.split(/\t/);
+    const parts = line.split("\t");
     if (parts.length < 3) continue;
-    const [name, addressRaw, phoneRaw, orderIdsRaw] = parts;
+
+    let name: string;
+    let addressRaw: string;
+    let phoneRaw: string;
+    let orderIdsRaw: string | undefined;
+
+    if (parts.length >= 4) {
+      [orderIdsRaw, name, addressRaw, phoneRaw] = parts;
+    } else {
+      [name, addressRaw, phoneRaw] = parts;
+    }
+
     const nameTrimmed = name?.trim() ?? "";
     const { address, notes } = extractAddressAndNotes(addressRaw ?? "");
     if (!nameTrimmed || !address) continue;

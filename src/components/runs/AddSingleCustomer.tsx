@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import type { DeliveryCustomer } from "@/types/delivery-run";
+import { parseOrderIdsFromText } from "@/lib/parsing/order-ids-input";
 
 interface AddSingleCustomerProps {
   /** For Create page: add customer to local state (geocode_status: pending) */
@@ -19,16 +20,30 @@ export function AddSingleCustomer({
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [notes, setNotes] = useState("");
+  const [orderIdsText, setOrderIdsText] = useState("");
   const [addressCoords, setAddressCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [loading, setLoading] = useState(false);
+
+  function resetForm() {
+    setName("");
+    setPhone("");
+    setAddress("");
+    setNotes("");
+    setOrderIdsText("");
+    setAddressCoords(null);
+  }
 
   async function handleAdd() {
     const nameTrimmed = name.trim();
     const addressTrimmed = address.trim();
     if (!nameTrimmed || !addressTrimmed) return;
+    const order_ids = parseOrderIdsFromText(orderIdsText);
 
     if (onAdd) {
-      const hasCoords = addressCoords && typeof addressCoords.lat === "number" && typeof addressCoords.lng === "number";
+      const hasCoords =
+        addressCoords &&
+        typeof addressCoords.lat === "number" &&
+        typeof addressCoords.lng === "number";
       onAdd({
         name: nameTrimmed,
         phone: phone.replace(/\D/g, ""),
@@ -38,29 +53,23 @@ export function AddSingleCustomer({
         is_end_point: false,
         geocode_status: hasCoords ? "success" : "pending",
         ...(hasCoords ? { lat: addressCoords!.lat, lng: addressCoords!.lng } : {}),
+        ...(order_ids ? { order_ids } : {}),
       });
-      setName("");
-      setPhone("");
-      setAddress("");
-      setNotes("");
-      setAddressCoords(null);
+      resetForm();
       return;
     }
 
     if (onParseAndAdd) {
       setLoading(true);
       try {
-        const addressWithNote =
-          notes.trim() ? `${addressTrimmed} (${notes.trim()})` : addressTrimmed;
-        const line = [nameTrimmed, addressWithNote, phone.replace(/\D/g, "")].join(
-          "\t"
-        );
-        await onParseAndAdd(line);
-        setName("");
-        setPhone("");
-        setAddress("");
-        setNotes("");
-        setAddressCoords(null);
+        const addressWithNote = notes.trim()
+          ? `${addressTrimmed} (${notes.trim()})`
+          : addressTrimmed;
+        const parts: string[] = [];
+        if (order_ids?.length) parts.push(order_ids.join(", "));
+        parts.push(nameTrimmed, addressWithNote, phone.replace(/\D/g, ""));
+        await onParseAndAdd(parts.join("\t"));
+        resetForm();
       } finally {
         setLoading(false);
       }
@@ -73,6 +82,23 @@ export function AddSingleCustomer({
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-xl">
+      <div className="md:col-span-2">
+        <label htmlFor="kapioo-order-ids" className={labelClass}>
+          Kapioo order IDs <span className="text-slate-500 font-normal">(optional)</span>
+        </label>
+        <input
+          id="kapioo-order-ids"
+          type="text"
+          value={orderIdsText}
+          onChange={(e) => setOrderIdsText(e.target.value)}
+          placeholder="e.g. ORD-1001 or ORD-1001, ORD-1002"
+          className={`${inputClass} font-mono text-sm`}
+        />
+        <p className="text-xs text-slate-500 mt-1">
+          First column when pasting. Copied onto each stop when you optimize; edit on run details
+          later. Leave blank for non-Kapioo deliveries.
+        </p>
+      </div>
       <div>
         <label className={labelClass}>Customer Name *</label>
         <input

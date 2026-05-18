@@ -24,7 +24,7 @@ export interface DeliveryCustomer {
   fixed_stop_position?: number | null;
   /**
    * Kapioo order IDs — CREATE-TIME SEED ONLY.
-   * Populated by the 4-column paste parser. Copied to `OptimizedStop.order_ids`
+   * Populated by paste (order IDs in the first column) or Add Single Customer. Copied to `OptimizedStop.order_ids`
    * on the first optimization. After that, the stop value wins on re-optimizations
    * and is the only field read at sync/retry time. Do NOT read this at sync time.
    */

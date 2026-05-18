@@ -6,6 +6,10 @@ import { useState } from "react";
 import { RunForm, type RunFormData } from "@/components/runs/RunForm";
 import { AddSingleCustomer } from "@/components/runs/AddSingleCustomer";
 import type { DeliveryCustomer } from "@/types/delivery-run";
+import {
+  CUSTOMER_PASTE_FORMAT_LINES,
+  CUSTOMER_PASTE_PLACEHOLDER,
+} from "@/lib/parsing/order-ids-input";
 
 function todayYYYYMMDD(): string {
   const d = new Date();
@@ -156,14 +160,15 @@ export default function CreateRunPage() {
                 Sheets, or any format. Each address will be automatically validated
                 and geocoded.
               </p>
-              <p className="text-xs text-slate-500 mb-3">
-                Tab-delimited: Name [TAB] Address [TAB] Phone. Notes in parentheses
-                in the address (e.g. Buzz code: 123) are extracted automatically.
-              </p>
+              <div className="text-xs text-slate-500 mb-3 space-y-1">
+                {CUSTOMER_PASTE_FORMAT_LINES.map((line) => (
+                  <p key={line}>{line}</p>
+                ))}
+              </div>
               <textarea
                 value={pastedText}
                 onChange={(e) => setPastedText(e.target.value)}
-                placeholder={`John Smith\t123 Main St Toronto ON M5V 1A1\t4161234567\nJane Doe\tUnit 506 456 Queen St W\t4169876543`}
+                placeholder={CUSTOMER_PASTE_PLACEHOLDER}
                 className="w-full border border-slate-200 rounded-xl px-4 py-2.5 min-h-[120px] font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 rows={5}
               />
@@ -203,6 +208,7 @@ export default function CreateRunPage() {
                   <thead className="bg-slate-50 sticky top-0">
                     <tr>
                       <th className="p-3 text-left font-medium text-slate-700 w-20">Actions</th>
+                      <th className="p-3 text-left font-medium text-slate-700">Kapioo order IDs</th>
                       <th className="p-3 text-left font-medium text-slate-700">Name</th>
                       <th className="p-3 text-left font-medium text-slate-700">Address</th>
                       <th className="p-3 text-left font-medium text-slate-700">Phone</th>
@@ -225,6 +231,9 @@ export default function CreateRunPage() {
                           >
                             Remove
                           </button>
+                        </td>
+                        <td className="p-3 text-slate-600 font-mono text-xs">
+                          {c.order_ids?.length ? c.order_ids.join(", ") : "—"}
                         </td>
                         <td className="p-3 text-slate-900">{c.name}</td>
                         <td className="p-3 text-slate-600">{c.address}</td>
