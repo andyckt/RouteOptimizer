@@ -1,17 +1,9 @@
 /**
- * Kapioo Admin POD ingestion client.
+ * Kapioo Admin ingestion client (signed JSON POST).
+ * Server-only. Used for POD and delivery-started integrations.
  *
- * Posts delivery completion (orderIds + already-uploaded R2 image URL/key) to the Admin
- * system for downstream order-status update. Server-only.
- *
- * Correctness contracts:
- * - The exact JSON body string used for HMAC signing MUST be the same string sent as the
- *   fetch body. We build it once with `JSON.stringify(payload)` and reuse it for both.
- * - The Admin endpoint is idempotent: it returns `{ updated, skipped, missing }` arrays,
- *   so retries converge. HTTP 200 alone does NOT imply full success; the caller MUST
- *   classify by inspecting those arrays.
- * - All network errors and non-2xx responses are surfaced through the unified result
- *   shape — this function never throws.
+ * The exact JSON body string used for HMAC signing MUST be the same string sent as the
+ * fetch body. We build it once with `JSON.stringify(payload)` and reuse it for both.
  */
 
 import crypto from "node:crypto";
@@ -26,6 +18,15 @@ export interface KapiooPodPayload {
   orderIds: string[];
   podImage: { url: string; key: string };
   capturedAt: string;
+  stopId: string;
+  driverId?: string;
+  note?: string;
+}
+
+export interface KapiooDeliveryStartedPayload {
+  orderIds: string[];
+  eta: string;
+  startedAt: string;
   stopId: string;
   driverId?: string;
   note?: string;
@@ -47,14 +48,12 @@ export interface KapiooPostResult {
   reasonHint?: KapiooPostReasonHint;
 }
 
-const POD_PATH = "/api/integrations/route-optimizer/proof-of-delivery";
+export const KAPIOO_POD_PATH = "/api/integrations/route-optimizer/proof-of-delivery";
+export const KAPIOO_DELIVERY_STARTED_PATH =
+  "/api/integrations/route-optimizer/delivery-started";
+
 const DEFAULT_TIMEOUT_MS = 5000;
 
-/**
- * Read Kapioo Admin config from environment. Returns null when any of the three vars
- * is missing — callers MUST treat that as a `failed` sync with reason `missing-env`,
- * never crash. Mirrors the optional R2 pattern.
- */
 export function getKapiooAdminConfigFromEnv(): KapiooAdminConfig | null {
   const baseUrl = process.env.KAPIOO_ADMIN_BASE_URL;
   const ingestToken = process.env.ROUTE_OPTIMIZER_INGEST_TOKEN;
@@ -82,32 +81,27 @@ function pickErrorMessage(parsed: unknown, fallback: string): string {
 }
 
 /**
- * POST the proof-of-delivery to Kapioo Admin. Bounded by `timeoutMs` via AbortController
- * so the driver request never blocks longer than that. The body is stringified exactly
- * once and shared between the HMAC and the fetch.
+ * Signed POST to Kapioo Admin. Never throws; surfaces errors via `KapiooPostResult`.
  */
-export async function postPodToKapiooAdmin(
+export async function postSignedKapiooJson(
   config: KapiooAdminConfig,
-  payload: KapiooPodPayload,
+  path: string,
+  payload: unknown,
   options?: { timeoutMs?: number; signal?: AbortSignal }
 ): Promise<KapiooPostResult> {
   const body = JSON.stringify(payload);
   const sig =
     "sha256=" +
-    crypto
-      .createHmac("sha256", config.ingestSecret)
-      .update(body, "utf8")
-      .digest("hex");
+    crypto.createHmac("sha256", config.ingestSecret).update(body, "utf8").digest("hex");
 
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const internalCtrl = new AbortController();
   const timer = setTimeout(() => internalCtrl.abort(), timeoutMs);
-  // Forward external abort into our controller so a parent cancellation also wins.
   const onExternalAbort = () => internalCtrl.abort();
   options?.signal?.addEventListener("abort", onExternalAbort, { once: true });
 
   try {
-    const res = await fetch(`${config.baseUrl}${POD_PATH}`, {
+    const res = await fetch(`${config.baseUrl}${path}`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.ingestToken}`,
@@ -173,4 +167,20 @@ export async function postPodToKapiooAdmin(
     clearTimeout(timer);
     options?.signal?.removeEventListener("abort", onExternalAbort);
   }
+}
+
+export async function postPodToKapiooAdmin(
+  config: KapiooAdminConfig,
+  payload: KapiooPodPayload,
+  options?: { timeoutMs?: number; signal?: AbortSignal }
+): Promise<KapiooPostResult> {
+  return postSignedKapiooJson(config, KAPIOO_POD_PATH, payload, options);
+}
+
+export async function postDeliveryStartedToKapiooAdmin(
+  config: KapiooAdminConfig,
+  payload: KapiooDeliveryStartedPayload,
+  options?: { timeoutMs?: number; signal?: AbortSignal }
+): Promise<KapiooPostResult> {
+  return postSignedKapiooJson(config, KAPIOO_DELIVERY_STARTED_PATH, payload, options);
 }

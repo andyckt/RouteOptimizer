@@ -71,6 +71,7 @@ const optimizedStopSchema = new Schema(
     // SSOT for Kapioo Admin sync.
     order_ids: { type: [String], default: undefined },
     kapioo_sync: { type: kapiooSyncSchema, default: undefined },
+    kapioo_delivery_started_sync: { type: kapiooSyncSchema, default: undefined },
   },
   { _id: false }
 );

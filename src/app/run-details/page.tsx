@@ -1262,6 +1262,9 @@ function RunDetailsContent() {
                         stop={stop}
                         index={i + 1}
                         stopIndex={i}
+                        runStarted={
+                          run.status === "in_progress" || run.status === "completed"
+                        }
                         isEditing={editingStopIndex === i}
                         saving={savingStopIndex === i}
                         onEdit={() => setEditingStopIndex(i)}
@@ -1541,6 +1544,67 @@ function parseOrderIdsInput(raw: string): string[] {
     .filter(Boolean);
 }
 
+function KapiooDeliveryStartedIndicator({
+  stop,
+  runStarted,
+}: {
+  stop: OptimizedStop;
+  runStarted: boolean;
+}) {
+  if (!runStarted) return null;
+  const sync = stop.kapioo_delivery_started_sync;
+  const hasOrderIds = Array.isArray(stop.order_ids) && stop.order_ids.length > 0;
+  if (!sync) {
+    if (!hasOrderIds) return null;
+    return (
+      <p className="mt-2 text-xs text-slate-500">Kapioo started: not yet reported</p>
+    );
+  }
+  if (sync.status === "skipped" && sync.reason === "no-order-ids" && !hasOrderIds) {
+    return null;
+  }
+
+  let label: string;
+  let detail: string | null = null;
+  let chipClass: string;
+
+  if (sync.status === "success") {
+    label = "Kapioo started: synced";
+    chipClass = "bg-emerald-50 text-emerald-800 border-emerald-200";
+  } else if (sync.status === "skipped") {
+    if (sync.reason === "no-order-ids") {
+      label = "Kapioo started: skipped (no order IDs)";
+    } else {
+      label = "Kapioo started: skipped";
+    }
+    chipClass = "bg-slate-100 text-slate-700 border-slate-200";
+  } else if (sync.status === "partial") {
+    const missing = sync.missing_order_ids?.length ?? 0;
+    const skipped = sync.skipped_order_ids?.length ?? 0;
+    const parts: string[] = [];
+    if (missing > 0) parts.push(`${missing} missing`);
+    if (skipped > 0) parts.push(`${skipped} skipped`);
+    label = `Kapioo started: partial${parts.length ? ` — ${parts.join(", ")}` : ""}`;
+    chipClass = "bg-amber-50 text-amber-900 border-amber-200";
+  } else {
+    label = `Kapioo started: failed (${sync.reason ?? "unknown"})`;
+    detail = sync.error_message ?? null;
+    chipClass = "bg-rose-50 text-rose-800 border-rose-200";
+  }
+
+  return (
+    <div className="mt-2 space-y-1">
+      <span
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${chipClass}`}
+      >
+        {label}
+      </span>
+      {detail && <p className="text-xs text-rose-700 break-words">{detail}</p>}
+      {sync.status === "partial" && <KapiooSyncBreakdown sync={sync} />}
+    </div>
+  );
+}
+
 function KapiooSyncIndicator({
   stop,
   onRetry,
@@ -1650,6 +1714,7 @@ function OptimizedStopCard({
   stop,
   index,
   stopIndex,
+  runStarted,
   isEditing,
   saving,
   onEdit,
@@ -1661,6 +1726,7 @@ function OptimizedStopCard({
   stop: OptimizedStop;
   index: number;
   stopIndex?: number;
+  runStarted?: boolean;
   isEditing?: boolean;
   saving?: boolean;
   onEdit?: () => void;
@@ -1862,6 +1928,10 @@ function OptimizedStopCard({
                   <span className="font-mono break-all">{stop.order_ids.join(", ")}</span>
                 </p>
               )}
+              <KapiooDeliveryStartedIndicator
+                stop={stop}
+                runStarted={Boolean(runStarted)}
+              />
               <KapiooSyncIndicator
                 stop={stop}
                 onRetry={onRetryKapiooSync}

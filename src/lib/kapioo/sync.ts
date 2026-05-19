@@ -11,6 +11,7 @@
 import type { KapiooSyncState, OptimizedStop } from "@/types/delivery-run";
 import { getR2ConfigFromEnv } from "@/lib/r2/client";
 import { normalizeOrderIds } from "@/lib/normalization/delivery-run";
+import { classifyKapiooPostResult } from "./classify-sync-result";
 import {
   getKapiooAdminConfigFromEnv,
   postPodToKapiooAdmin,
@@ -112,31 +113,8 @@ export async function runKapiooSync(inputs: KapiooSyncInputs): Promise<KapiooSyn
 
   const result = await postPodToKapiooAdmin(config, payload, { signal, timeoutMs });
 
-  if (!result.ok) {
-    return {
-      status: "failed",
-      reason: result.reasonHint ?? "admin-api-5xx",
-      attempted_at: attemptedAt,
-      attempts: nextAttempts,
-      error_message: result.errorMessage ?? `HTTP ${result.status}`,
-    };
-  }
-
-  const expected = new Set(orderIds);
-  const updated = result.updated ?? [];
-  const skipped = result.skipped ?? [];
-  const missing = result.missing ?? [];
-  const allUpdated =
-    updated.length === expected.size && updated.every((id) => expected.has(id));
-  const fullSuccess = allUpdated && missing.length === 0 && skipped.length === 0;
-
-  return {
-    status: fullSuccess ? "success" : "partial",
-    ...(fullSuccess ? {} : { reason: "partial-success" as const }),
-    attempted_at: attemptedAt,
+  return classifyKapiooPostResult(orderIds, result, {
+    attemptedAt,
     attempts: nextAttempts,
-    ...(updated.length > 0 ? { updated_order_ids: updated } : {}),
-    ...(skipped.length > 0 ? { skipped_order_ids: skipped } : {}),
-    ...(missing.length > 0 ? { missing_order_ids: missing } : {}),
-  };
+  });
 }

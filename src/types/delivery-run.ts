@@ -43,7 +43,8 @@ export type KapiooSyncReason =
   | "admin-api-401"
   | "admin-api-400"
   | "admin-api-5xx"
-  | "partial-success";
+  | "partial-success"
+  | "missing-arrival-time";
 
 export interface KapiooSyncState {
   status: KapiooSyncStatus;
@@ -83,8 +84,10 @@ export interface OptimizedStop {
    * Empty/undefined means this stop is intentionally not a Kapioo order.
    */
   order_ids?: string[];
-  /** Last Kapioo Admin sync attempt outcome (admin-side surface only). */
+  /** Last Kapioo Admin POD sync outcome (admin-side surface only). */
   kapioo_sync?: KapiooSyncState;
+  /** Kapioo Admin delivery-started sync (Start Delivery). Separate from POD. */
+  kapioo_delivery_started_sync?: KapiooSyncState;
 }
 
 export interface OptimizedRoute {

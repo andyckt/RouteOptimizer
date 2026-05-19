@@ -13,6 +13,8 @@ import { sendSms } from "@/lib/openphone/client";
 import { getServerEnv } from "@/lib/env";
 import { toE164NorthAmerica } from "@/lib/phone/e164";
 import { formatEtaWindowToronto } from "@/lib/time/etaWindow";
+import { runKapiooDeliveryStartedBatch } from "@/lib/kapioo/delivery-started-sync";
+import type { KapiooSyncState } from "@/types/delivery-run";
 
 const SMS_TEMPLATE =
   "【Kapioo卡皮喔】您的今日餐食正在配送中，预计送达时间为：{eta}。请耐心等待喔~";
@@ -145,6 +147,36 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     await run.save();
 
+    const startedAt = run.actual_start_time as string;
+    const driverName =
+      typeof run.driver_name === "string" && run.driver_name.trim()
+        ? run.driver_name.trim()
+        : undefined;
+
+    // Run Kapioo delivery-started in parallel with SMS so driver wait ≈ max(SMS, Kapioo).
+    const kapiooPromise = runKapiooDeliveryStartedBatch({
+      runId: id,
+      stops,
+      startedAt,
+      driverName,
+    }).catch((err): KapiooSyncState[] => {
+      console.error(
+        JSON.stringify({
+          event: "delivery_started_kapioo_batch_failed",
+          runId: id,
+          message: err instanceof Error ? err.message : String(err),
+        })
+      );
+      const attemptedAt = new Date().toISOString();
+      return stops.map(() => ({
+        status: "failed" as const,
+        reason: "admin-api-5xx" as const,
+        attempted_at: attemptedAt,
+        attempts: 1,
+        error_message: err instanceof Error ? err.message : "Kapioo delivery-started batch failed",
+      }));
+    });
+
     const failedCustomers: Array<{
       customer_name: string;
       phone: string;
@@ -207,6 +239,26 @@ export async function POST(req: NextRequest, { params }: Params) {
       run.messages_sent = true;
       run.messages_sent_at = new Date().toISOString();
     }
+
+    const deliveryStartedSyncs = await kapiooPromise;
+    for (let i = 0; i < stops.length; i++) {
+      stops[i].kapioo_delivery_started_sync = deliveryStartedSyncs[i];
+      const sync = deliveryStartedSyncs[i];
+      if (sync.status !== "skipped" || sync.reason !== "no-order-ids") {
+        console.log(
+          JSON.stringify({
+            event: "delivery_started_kapioo_sync",
+            runId: id,
+            stopIndex: i,
+            status: sync.status,
+            reason: sync.reason,
+            updated: sync.updated_order_ids?.length ?? 0,
+            missing: sync.missing_order_ids?.length ?? 0,
+          })
+        );
+      }
+    }
+
     route.stops = sanitizeStops(stops);
     await run.save();
 
