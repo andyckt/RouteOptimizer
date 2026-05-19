@@ -10,7 +10,7 @@ import { sendSms } from "@/lib/openphone/client";
 import { getServerEnv } from "@/lib/env";
 import { toE164NorthAmerica } from "@/lib/phone/e164";
 
-const DELIVERED_SMS = "您好，今天的餐食已经送达了，请慢用~";
+const DELIVERED_SMS = "您好，今天的餐食已送达，您可在订单详情中查看送达照片喔~";
 
 type Params = { params: Promise<{ id: string }> };
 

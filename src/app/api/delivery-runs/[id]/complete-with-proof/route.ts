@@ -18,7 +18,7 @@ type Params = { params: Promise<{ id: string }> };
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
 const MAX_SIZE = 10 * 1024 * 1024;
-const DELIVERED_SMS = "您好，今天的餐食已经送达了，请慢用~";
+const DELIVERED_SMS = "您好，今天的餐食已送达，您可在订单详情中查看送达照片喔~";
 
 /** Validates that URLs are from our R2 bucket or local /uploads/ path */
 function validateImageUrls(urls: string[], runId: string): void {
