@@ -25,6 +25,9 @@ const customerSchema = new Schema<DeliveryCustomer>(
     fixed_stop_position: { type: Number, default: null },
     // Create-time seed only. Sync/retry reads OptimizedStop.order_ids, never this.
     order_ids: { type: [String], default: undefined },
+    is_synthetic: { type: Boolean },
+    stop_type: { type: String, enum: ["customer", "handoff"] },
+    service_time_minutes: { type: Number },
   },
   { _id: false }
 );
@@ -72,6 +75,9 @@ const optimizedStopSchema = new Schema(
     order_ids: { type: [String], default: undefined },
     kapioo_sync: { type: kapiooSyncSchema, default: undefined },
     kapioo_delivery_started_sync: { type: kapiooSyncSchema, default: undefined },
+    is_synthetic: { type: Boolean },
+    stop_type: { type: String, enum: ["customer", "handoff"] },
+    service_time_minutes: { type: Number },
   },
   { _id: false }
 );
@@ -112,6 +118,10 @@ const deliveryRunSchema = new Schema(
     optimized_route: { type: optimizedRouteSchema },
     messages_sent: { type: Boolean, default: false },
     messages_sent_at: { type: String },
+    planning_session_id: { type: String },
+    external_id: { type: String },
+    idempotency_key: { type: String },
+    created_by_integration: { type: String },
   },
   { timestamps: true }
 );

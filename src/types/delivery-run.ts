@@ -6,6 +6,9 @@ export type TravelMode = "driving" | "ebike";
 export type GeocodeStatus = "success" | "failed" | "pending" | "override_success";
 export type RunStatus = "draft" | "optimized" | "in_progress" | "completed";
 
+/** Stop classification. Effective default `"customer"` is applied in code, not the schema. */
+export type StopType = "customer" | "handoff";
+
 export interface DeliveryCustomer {
   name: string;
   phone: string;
@@ -29,6 +32,15 @@ export interface DeliveryCustomer {
    * and is the only field read at sync/retry time. Do NOT read this at sync time.
    */
   order_ids?: string[];
+  /**
+   * True for synthetic operational stops (e.g. meet-up handoff). Effective default `false`
+   * is applied in code, not the schema.
+   */
+  is_synthetic?: boolean;
+  /** Effective default `"customer"` is applied in code, not the schema. */
+  stop_type?: StopType;
+  /** Service time at stop in minutes. Effective default `5` is applied in code, not the schema. */
+  service_time_minutes?: number;
 }
 
 /** Outcome of pushing a completed stop to Kapioo Admin's POD ingestion endpoint. */
@@ -88,6 +100,12 @@ export interface OptimizedStop {
   kapioo_sync?: KapiooSyncState;
   /** Kapioo Admin delivery-started sync (Start Delivery). Separate from POD. */
   kapioo_delivery_started_sync?: KapiooSyncState;
+  /** Copied from customer on optimize. Effective default `false` is applied in code, not the schema. */
+  is_synthetic?: boolean;
+  /** Copied from customer on optimize. Effective default `"customer"` is applied in code, not the schema. */
+  stop_type?: StopType;
+  /** Copied from customer on optimize. Effective default `5` is applied in code, not the schema. */
+  service_time_minutes?: number;
 }
 
 export interface OptimizedRoute {
@@ -115,6 +133,14 @@ export interface DeliveryRun {
   optimized_route?: OptimizedRoute;
   messages_sent?: boolean;
   messages_sent_at?: string;
+  /** Groups DT / UT / Self runs created together by Kapioo Admin integration. */
+  planning_session_id?: string;
+  /** External reference from Kapioo Admin for this run. */
+  external_id?: string;
+  /** Idempotency key for integration-created runs; duplicate prevention SSOT. */
+  idempotency_key?: string;
+  /** Integration source identifier (e.g. kapioo-admin). */
+  created_by_integration?: string;
   createdAt: Date;
   updatedAt: Date;
 }
