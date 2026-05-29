@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import Image from "next/image";
 import type { DeliveryRun, DeliveryCustomer, OptimizedStop } from "@/types/delivery-run";
 import { isSyntheticStop } from "@/lib/stops/synthetic";
+import { HandoffBadge } from "@/components/stops/HandoffBadge";
 
 function formatDuration(minutes: number): string {
   const h = Math.floor(minutes / 60);
@@ -360,8 +361,13 @@ export function DriverRouteView({
                     <div className="flex-1 min-w-0">
                       <span className="block font-semibold text-slate-900 truncate">{stop.customer_name}</span>
                       {isSyntheticStop(stop) && (
-                        <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-violet-100 text-violet-800">
-                          Handoff
+                        <span className="inline-block mt-0.5">
+                          <HandoffBadge />
+                        </span>
+                      )}
+                      {isSyntheticStop(stop) && (
+                        <span className="block text-xs text-violet-800/90 mt-0.5">
+                          Meet-up point — not a customer delivery
                         </span>
                       )}
                       {stop.customer_address && (
@@ -409,11 +415,7 @@ export function DriverRouteView({
                     <div className="flex justify-between items-start gap-2">
                       <div className="flex items-center gap-2 flex-wrap min-w-0">
                         <span className="text-base font-semibold text-slate-900">{stop.customer_name}</span>
-                        {isSyntheticStop(stop) && (
-                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wide bg-violet-100 text-violet-800">
-                            Handoff
-                          </span>
-                        )}
+                        {isSyntheticStop(stop) && <HandoffBadge />}
                         {stop.completed && (
                           <>
                             <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
@@ -445,21 +447,34 @@ export function DriverRouteView({
                         </button>
                       )}
                     </div>
+                    {isSyntheticStop(stop) && (
+                      <p className="text-xs text-violet-800/90 mt-0.5">
+                        Meet-up point — not a customer delivery
+                      </p>
+                    )}
                     <p className="text-sm text-slate-600 mt-0.5 select-text">
                       {stop.customer_address}
                     </p>
-                    <p className="text-sm text-slate-600 mt-0.5">
-                      {stop.customer_phone ? (
-                        <a
-                          href={`tel:${stop.customer_phone.replace(/\D/g, "")}`}
-                          className="text-blue-600 hover:underline font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 rounded"
-                        >
+                    {isSyntheticStop(stop) ? (
+                      stop.customer_phone ? (
+                        <p className="text-sm text-slate-500 mt-0.5">
                           {stop.customer_phone}
-                        </a>
-                      ) : (
-                        <span>No phone</span>
-                      )}
-                    </p>
+                        </p>
+                      ) : null
+                    ) : (
+                      <p className="text-sm text-slate-600 mt-0.5">
+                        {stop.customer_phone ? (
+                          <a
+                            href={`tel:${stop.customer_phone.replace(/\D/g, "")}`}
+                            className="text-blue-600 hover:underline font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 rounded"
+                          >
+                            {stop.customer_phone}
+                          </a>
+                        ) : (
+                          <span>No phone</span>
+                        )}
+                      </p>
+                    )}
                     {stop.notes && (
                       <div className="mt-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200">
                         <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-0.5">

@@ -3,7 +3,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { AddSingleCustomer } from "./AddSingleCustomer";
 import { AddressAutocomplete } from "@/components/AddressAutocomplete";
-import type { DeliveryCustomer } from "@/types/delivery-run";
+import type { DeliveryCustomer, StopType } from "@/types/delivery-run";
+import { isSyntheticStop } from "@/lib/stops/synthetic";
+import { HandoffBadge } from "@/components/stops/HandoffBadge";
 import { getFixedStopPositionValidationMessage } from "@/lib/validation/fixed-stop-position";
 import {
   CUSTOMER_PASTE_FORMAT_LINES,
@@ -26,6 +28,8 @@ export interface CustomerRow {
   is_end_point?: boolean;
   fixed_stop_position?: number | null;
   order_ids?: string[];
+  is_synthetic?: boolean;
+  stop_type?: StopType;
 }
 
 interface CustomersEditorProps {
@@ -329,17 +333,23 @@ export function CustomersEditor({
                   </td>
                   <td className="p-3 align-top">
                     {editingIndex === i ? (
-                      <input
-                        type="text"
-                        value={c.name}
-                        onChange={(e) =>
-                          updateCustomer(i, { name: e.target.value })
-                        }
-                        className="w-full border border-slate-200 rounded-lg px-3 py-2 min-w-0 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="Name"
-                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="text"
+                          value={c.name}
+                          onChange={(e) =>
+                            updateCustomer(i, { name: e.target.value })
+                          }
+                          className="flex-1 min-w-[8rem] border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="Name"
+                        />
+                        {isSyntheticStop(c) && <HandoffBadge />}
+                      </div>
                     ) : (
-                      <span className="text-slate-800">{c.name}</span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-slate-800">{c.name}</span>
+                        {isSyntheticStop(c) && <HandoffBadge />}
+                      </div>
                     )}
                   </td>
                   <td className="p-3 align-top min-w-[180px]">

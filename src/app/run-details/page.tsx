@@ -29,6 +29,9 @@ import {
   parseFixedStopValue,
 } from "@/lib/validation/fixed-stop-position";
 import { BroadcastSmsModal, BROADCAST_SMS_MAX_CHARS } from "@/components/runs/BroadcastSmsModal";
+import { RunIntegrationMetadata } from "@/components/runs/RunIntegrationMetadata";
+import { HandoffBadge } from "@/components/stops/HandoffBadge";
+import { isSyntheticStop } from "@/lib/stops/synthetic";
 
 const RouteMap = dynamic(
   () => import("@/components/run-details/RouteMap"),
@@ -1005,6 +1008,14 @@ function RunDetailsContent() {
             </span>
           </div>
 
+          <RunIntegrationMetadata
+            run={run}
+            variant="detail"
+            onCopy={async (text) => {
+              await copyToClipboard(text);
+            }}
+          />
+
           {/* Action buttons */}
           <div className="flex flex-wrap gap-2">
           <Link
@@ -1306,7 +1317,10 @@ function CustomerStopCard({
           {index}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-slate-900">{customer.name}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-semibold text-slate-900">{customer.name}</p>
+            {isSyntheticStop(customer) && <HandoffBadge />}
+          </div>
           <p className="text-sm text-slate-600 flex items-start gap-1 mt-1">
             <span aria-hidden className="flex-shrink-0">📍</span>
             <span>{customer.address}</span>
@@ -1388,6 +1402,7 @@ function SortableStopRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <p className="font-semibold text-sm text-slate-900">{stop.customer_name}</p>
+          {isSyntheticStop(stop) && <HandoffBadge />}
           {fixedLocked && (
             <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">
               Fixed
@@ -1551,6 +1566,7 @@ function KapiooDeliveryStartedIndicator({
   stop: OptimizedStop;
   runStarted: boolean;
 }) {
+  if (isSyntheticStop(stop)) return null;
   if (!runStarted) return null;
   const sync = stop.kapioo_delivery_started_sync;
   const hasOrderIds = Array.isArray(stop.order_ids) && stop.order_ids.length > 0;
@@ -1614,6 +1630,7 @@ function KapiooSyncIndicator({
   onRetry?: () => void;
   retrying?: boolean;
 }) {
+  if (isSyntheticStop(stop)) return null;
   if (!stop.completed) return null;
   const sync = stop.kapioo_sync;
   const hasOrderIds = Array.isArray(stop.order_ids) && stop.order_ids.length > 0;
@@ -1881,6 +1898,7 @@ function OptimizedStopCard({
             <>
               <div className="flex items-center gap-2 flex-wrap">
                 <p className="font-semibold text-slate-900">{stop.customer_name}</p>
+                {isSyntheticStop(stop) && <HandoffBadge />}
                 {stop.completed && (
                   <>
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">

@@ -2,11 +2,17 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { RunIntegrationMetadata } from "@/components/runs/RunIntegrationMetadata";
+import { hasRunIntegrationMetadata } from "@/lib/integration/displayRunMetadata";
 
 interface RunSummary {
   _id: string;
   run_date: string;
   driver_name: string;
+  planning_session_id?: string;
+  external_id?: string;
+  idempotency_key?: string;
+  created_by_integration?: string;
   status: string;
   actual_start_time?: string;
   optimized_route?: {
@@ -93,7 +99,10 @@ function filterRuns(
       (r) =>
         (r.driver_name ?? "").toLowerCase().includes(q) ||
         (r.run_date ?? "").toLowerCase().includes(q) ||
-        (r.status ?? "").toLowerCase().includes(q)
+        (r.status ?? "").toLowerCase().includes(q) ||
+        (r.planning_session_id ?? "").toLowerCase().includes(q) ||
+        (r.external_id ?? "").toLowerCase().includes(q) ||
+        (r.created_by_integration ?? "").toLowerCase().includes(q)
     );
   }
 
@@ -365,9 +374,14 @@ export default function DashboardPage() {
                             {r.status}
                           </span>
                         </div>
-                        <p className="font-medium text-slate-900 mb-3">
+                        <p className={`font-medium text-slate-900 ${hasRunIntegrationMetadata(r) ? "mb-1" : "mb-3"}`}>
                           {r.driver_name || "—"}
                         </p>
+                        {hasRunIntegrationMetadata(r) && (
+                          <div className="mb-3">
+                            <RunIntegrationMetadata run={r} variant="compact" />
+                          </div>
+                        )}
                         <div className="grid grid-cols-2 gap-2 text-sm text-slate-600 mb-4">
                           <span>Est. {duration != null ? formatDuration(duration) : "—"}</span>
                           <span>Actual {actualDuration != null ? formatDuration(actualDuration) : "—"}</span>
@@ -445,7 +459,10 @@ export default function DashboardPage() {
                         return (
                           <tr key={r._id} className="border-t border-slate-200 hover:bg-slate-50/50 transition-colors">
                             <td className="p-3 text-slate-700">{r.run_date}</td>
-                            <td className="p-3 text-slate-700">{r.driver_name || "—"}</td>
+                            <td className="p-3 text-slate-700">
+                              <div className="font-medium">{r.driver_name || "—"}</div>
+                              <RunIntegrationMetadata run={r} variant="compact" />
+                            </td>
                             <td className="p-3">
                               <span
                                 className={`capitalize ${

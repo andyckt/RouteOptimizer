@@ -10,6 +10,7 @@ import {
 } from "@/components/runs/CustomersEditor";
 import type { DeliveryCustomer } from "@/types/delivery-run";
 import { getFixedStopPositionValidationMessage } from "@/lib/validation/fixed-stop-position";
+import { RunIntegrationMetadata } from "@/components/runs/RunIntegrationMetadata";
 
 interface RunData {
   _id: string;
@@ -20,6 +21,10 @@ interface RunData {
   start_time: string;
   travel_mode: "driving" | "ebike";
   customers: CustomerRow[];
+  planning_session_id?: string;
+  external_id?: string;
+  idempotency_key?: string;
+  created_by_integration?: string;
 }
 
 function EditRunContent() {
@@ -420,6 +425,7 @@ function EditRunContent() {
               </h2>
             </div>
             <div className="p-5 sm:p-6">
+              <RunIntegrationMetadata run={run} variant="detail" />
               <RunForm
                 initial={{
                   run_date: run.run_date,

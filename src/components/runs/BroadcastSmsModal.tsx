@@ -12,6 +12,7 @@ import {
 import type { DeliveryCustomer } from "@/types/delivery-run";
 import { toE164NorthAmerica } from "@/lib/phone/e164";
 import { isSyntheticStop } from "@/lib/stops/synthetic";
+import { HandoffBadge } from "@/components/stops/HandoffBadge";
 
 export const BROADCAST_SMS_MAX_CHARS = 1600;
 
@@ -60,12 +61,14 @@ const RecipientRow = memo(function RecipientRow({
   customer,
   selected,
   smsable,
+  isHandoff,
   onToggle,
 }: {
   index: number;
   customer: DeliveryCustomer;
   selected: boolean;
   smsable: boolean;
+  isHandoff: boolean;
   onToggle: (customerIndex: number) => void;
 }) {
   const name = (customer.name ?? "").trim() || "(no name)";
@@ -84,11 +87,16 @@ const RecipientRow = memo(function RecipientRow({
         htmlFor={`broadcast-recipient-${index}`}
         className={`flex-1 min-w-0 cursor-pointer ${!smsable ? "opacity-60" : ""}`}
       >
-        <div className="text-sm font-medium text-slate-900 truncate">{name}</div>
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
+          <span className="text-sm font-medium text-slate-900 truncate">{name}</span>
+          {isHandoff && <HandoffBadge />}
+        </div>
         <div className="text-xs text-slate-500 truncate tabular-nums">{phone}</div>
-        {!smsable && (
+        {isHandoff ? (
+          <div className="text-xs text-slate-500 mt-0.5">Handoff · not SMS eligible</div>
+        ) : !smsable ? (
           <div className="text-xs text-amber-700 mt-0.5">Cannot receive SMS · fix number</div>
-        )}
+        ) : null}
       </label>
     </li>
   );
@@ -343,6 +351,7 @@ export function BroadcastSmsModal({
                   customer={customers[i]}
                   selected={selected.has(i)}
                   smsable={isSmsable(customers[i])}
+                  isHandoff={isSyntheticStop(customers[i])}
                   onToggle={toggleIndex}
                 />
               ))
