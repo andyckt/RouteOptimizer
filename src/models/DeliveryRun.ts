@@ -126,5 +126,11 @@ const deliveryRunSchema = new Schema(
   { timestamps: true }
 );
 
+// Sparse, non-unique indexes for integration lookups. Sparse excludes existing/manual
+// runs that lack these fields; non-unique avoids any write failures on legacy data.
+// Duplicate prevention is enforced in application logic, not by a unique constraint.
+deliveryRunSchema.index({ idempotency_key: 1 }, { sparse: true });
+deliveryRunSchema.index({ external_id: 1 }, { sparse: true });
+
 export const DeliveryRunModel =
   models.DeliveryRun ?? model("DeliveryRun", deliveryRunSchema);

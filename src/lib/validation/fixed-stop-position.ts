@@ -1,6 +1,36 @@
 import type { DeliveryCustomer } from "@/types/delivery-run";
 import { validationError } from "@/lib/http/errors";
 
+export interface RouteConstraintIssue {
+  field?: string;
+  message: string;
+  customer_index?: number;
+  customer_name?: string;
+  order_ids?: string[];
+}
+
+function constraintIssue(
+  customers: DeliveryCustomer[],
+  customerIndex: number | undefined,
+  fieldSuffix: string | undefined,
+  message: string
+): RouteConstraintIssue {
+  const c =
+    customerIndex !== undefined && customerIndex >= 0
+      ? customers[customerIndex]
+      : undefined;
+  return {
+    field:
+      customerIndex !== undefined && fieldSuffix
+        ? `customers[${customerIndex}].${fieldSuffix}`
+        : undefined,
+    message,
+    customer_index: customerIndex,
+    customer_name: c?.name,
+    order_ids: c?.order_ids,
+  };
+}
+
 export type ParsedFixedStop =
   | { ok: true; value: number | null }
   | { ok: false; message: string };
@@ -28,36 +58,59 @@ export function parseFixedStopValue(raw: unknown): ParsedFixedStop {
 }
 
 /**
- * Validates fixed stop positions after numeric parsing (sanitize first).
- * N = total customers in the run.
- * Returns first error message, or null if valid.
+ * Validates route constraints after numeric parsing (sanitize first).
+ * Returns all issues with customer context for integration responses.
  */
-export function getFixedStopPositionValidationMessage(
+export function collectRouteConstraintIssues(
   customers: DeliveryCustomer[]
-): string | null {
+): RouteConstraintIssue[] {
+  const issues: RouteConstraintIssue[] = [];
   const N = customers.length;
   const parsed: (number | null)[] = [];
 
   for (let i = 0; i < N; i++) {
     const p = parseFixedStopValue(customers[i].fixed_stop_position);
-    if (!p.ok) return p.message;
+    if (!p.ok) {
+      issues.push(
+        constraintIssue(customers, i, "fixed_stop_position", p.message)
+      );
+      parsed[i] = null;
+      continue;
+    }
     parsed[i] = p.value;
   }
+  if (issues.length > 0) return issues;
 
   for (let i = 0; i < N; i++) {
     const fp = parsed[i];
     if (fp === null) continue;
     if (fp < 1 || fp > N) {
-      return `Fixed stop position must be between 1 and ${N}.`;
+      issues.push(
+        constraintIssue(
+          customers,
+          i,
+          "fixed_stop_position",
+          `Fixed stop position must be between 1 and ${N}.`
+        )
+      );
     }
   }
+  if (issues.length > 0) return issues;
 
   const used = new Map<number, number>();
   for (let i = 0; i < N; i++) {
     const fp = parsed[i];
     if (fp === null) continue;
     if (used.has(fp)) {
-      return "Two customers cannot share the same fixed stop position.";
+      issues.push(
+        constraintIssue(
+          customers,
+          i,
+          "fixed_stop_position",
+          "Two customers cannot share the same fixed stop position."
+        )
+      );
+      return issues;
     }
     used.set(fp, i);
   }
@@ -66,19 +119,44 @@ export function getFixedStopPositionValidationMessage(
     .map((c, idx) => ({ c, idx }))
     .filter((x) => x.c.is_first_stop);
   if (firstIndices.length > 1) {
-    return "Only one customer can be marked as First Stop.";
+    issues.push(
+      constraintIssue(
+        customers,
+        firstIndices[1].idx,
+        "is_first_stop",
+        "Only one customer can be marked as First Stop."
+      )
+    );
+    return issues;
   }
+
   const endIndices = customers
     .map((c, idx) => ({ c, idx }))
     .filter((x) => x.c.is_end_point);
   if (endIndices.length > 1) {
-    return "Only one customer can be marked as End Point.";
+    issues.push(
+      constraintIssue(
+        customers,
+        endIndices[1].idx,
+        "is_end_point",
+        "Only one customer can be marked as End Point."
+      )
+    );
+    return issues;
   }
 
   if (N > 1) {
     for (let i = 0; i < N; i++) {
       if (customers[i].is_first_stop && customers[i].is_end_point) {
-        return "A customer cannot be both First Stop and End Point unless the route has only one stop.";
+        issues.push(
+          constraintIssue(
+            customers,
+            i,
+            "is_first_stop",
+            "A customer cannot be both First Stop and End Point unless the route has only one stop."
+          )
+        );
+        return issues;
       }
     }
   }
@@ -89,11 +167,27 @@ export function getFixedStopPositionValidationMessage(
   if (firstStop) {
     const fp = parsed[firstStop.idx];
     if (fp !== null && fp !== 1) {
-      return "A First Stop customer must be position 1.";
+      issues.push(
+        constraintIssue(
+          customers,
+          firstStop.idx,
+          "is_first_stop",
+          "A First Stop customer must be position 1."
+        )
+      );
+      return issues;
     }
     for (let j = 0; j < N; j++) {
       if (j !== firstStop.idx && parsed[j] === 1) {
-        return "This fixed stop position conflicts with another route rule.";
+        issues.push(
+          constraintIssue(
+            customers,
+            j,
+            "fixed_stop_position",
+            "This fixed stop position conflicts with another route rule."
+          )
+        );
+        return issues;
       }
     }
   }
@@ -101,16 +195,43 @@ export function getFixedStopPositionValidationMessage(
   if (endPoint) {
     const fp = parsed[endPoint.idx];
     if (fp !== null && fp !== N) {
-      return "An End Point customer must be the final stop.";
+      issues.push(
+        constraintIssue(
+          customers,
+          endPoint.idx,
+          "is_end_point",
+          "An End Point customer must be the final stop."
+        )
+      );
+      return issues;
     }
     for (let j = 0; j < N; j++) {
       if (j !== endPoint.idx && parsed[j] === N) {
-        return "This fixed stop position conflicts with another route rule.";
+        issues.push(
+          constraintIssue(
+            customers,
+            j,
+            "fixed_stop_position",
+            "This fixed stop position conflicts with another route rule."
+          )
+        );
+        return issues;
       }
     }
   }
 
-  return null;
+  return issues;
+}
+
+/**
+ * Validates fixed stop positions after numeric parsing (sanitize first).
+ * N = total customers in the run.
+ * Returns first error message, or null if valid.
+ */
+export function getFixedStopPositionValidationMessage(
+  customers: DeliveryCustomer[]
+): string | null {
+  return collectRouteConstraintIssues(customers)[0]?.message ?? null;
 }
 
 export function assertFixedStopPositionsValid(customers: DeliveryCustomer[]): void {

@@ -9,6 +9,8 @@ import { sanitizeRunForResponse } from "@/lib/normalization/delivery-run";
 import { sendSms } from "@/lib/openphone/client";
 import { getServerEnv } from "@/lib/env";
 import { toE164NorthAmerica } from "@/lib/phone/e164";
+import type { OptimizedStop } from "@/types/delivery-run";
+import { isSyntheticStop } from "@/lib/stops/synthetic";
 
 const DELIVERED_SMS = "您好，今天的餐食已送达，您可在订单详情中查看送达照片喔~";
 
@@ -51,7 +53,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       throw validationError("Invalid stop index");
     }
 
-    const stop = route.stops[stopIndex] as Record<string, unknown>;
+    const stop = route.stops[stopIndex] as OptimizedStop;
     stop.completed = true;
     stop.completed_at = new Date().toISOString();
 
@@ -64,9 +66,11 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     await run.save();
 
-    // Send "delivered" SMS to customer
+    // Send "delivered" SMS to customer (skip synthetic/handoff stops)
     const { OPENPHONE_FROM } = getServerEnv();
-    const toE164 = toE164NorthAmerica(String(stop.customer_phone ?? ""));
+    const toE164 = isSyntheticStop(stop)
+      ? null
+      : toE164NorthAmerica(stop.customer_phone ?? "");
     if (toE164) {
       const smsResult = await sendSms({
         from: OPENPHONE_FROM,

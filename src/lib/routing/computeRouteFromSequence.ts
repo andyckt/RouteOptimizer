@@ -1,6 +1,7 @@
 import type { DeliveryCustomer, OptimizedStop } from "@/types/delivery-run";
 import { getDirectionsLeg, type LatLng } from "@/lib/google/directions";
 import { validationError } from "@/lib/http/errors";
+import { getEffectiveServiceTimeMinutes } from "@/lib/stops/synthetic";
 
 function toRoutingCoords(customer: DeliveryCustomer): {
   coords: LatLng;
@@ -171,9 +172,16 @@ export async function computeOptimizedRouteFromSequence(
       nearby_location_reference: routing.nearbyRef,
       completed: false,
       ...(resolvedOrderIds ? { order_ids: resolvedOrderIds } : {}),
+      ...(customer.is_synthetic !== undefined
+        ? { is_synthetic: customer.is_synthetic }
+        : {}),
+      ...(customer.stop_type !== undefined ? { stop_type: customer.stop_type } : {}),
+      ...(customer.service_time_minutes !== undefined
+        ? { service_time_minutes: customer.service_time_minutes }
+        : {}),
     });
 
-    currentTime = addMinutes(currentTime, 5);
+    currentTime = addMinutes(currentTime, getEffectiveServiceTimeMinutes(customer));
   }
 
   let returnDistanceKm = 0;
@@ -208,7 +216,12 @@ export async function computeOptimizedRouteFromSequence(
   const travelSumMinutes = round2(
     stops.reduce((sum, s) => sum + (s.duration_from_previous ?? 0), 0)
   );
-  const serviceMinutes = stops.length * 5;
+  const serviceMinutes = round2(
+    customerIndicesInOrder.reduce((sum, custIdx) => {
+      const customer = customers[custIdx];
+      return sum + getEffectiveServiceTimeMinutes(customer);
+    }, 0)
+  );
 
   return {
     stops,

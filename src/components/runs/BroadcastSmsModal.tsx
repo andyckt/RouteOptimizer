@@ -11,10 +11,12 @@ import {
 } from "react";
 import type { DeliveryCustomer } from "@/types/delivery-run";
 import { toE164NorthAmerica } from "@/lib/phone/e164";
+import { isSyntheticStop } from "@/lib/stops/synthetic";
 
 export const BROADCAST_SMS_MAX_CHARS = 1600;
 
 function isSmsable(customer: DeliveryCustomer): boolean {
+  if (isSyntheticStop(customer)) return false;
   return Boolean(toE164NorthAmerica(customer.phone ?? ""));
 }
 

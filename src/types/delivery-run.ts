@@ -48,6 +48,7 @@ export type KapiooSyncStatus = "skipped" | "success" | "partial" | "failed";
 
 export type KapiooSyncReason =
   | "no-order-ids"
+  | "synthetic-stop"
   | "missing-env"
   | "pod-not-r2-url"
   | "non-r2-dev-url"

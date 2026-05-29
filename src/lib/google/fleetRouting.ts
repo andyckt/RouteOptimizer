@@ -15,6 +15,8 @@ export interface FleetLatLng {
 export interface FleetShipmentInput {
   label: string;
   location: FleetLatLng;
+  /** Service time at stop in seconds. Defaults to 300 (5 min) when omitted. */
+  serviceTimeSeconds?: number;
 }
 
 export interface FleetVehicleInput {
@@ -168,7 +170,7 @@ export async function optimizeTours(input: {
                 latLng: shipment.location,
               },
             },
-            duration: "300s",
+            duration: `${shipment.serviceTimeSeconds ?? 300}s`,
           },
         ],
       })),

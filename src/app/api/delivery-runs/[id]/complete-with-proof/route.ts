@@ -13,6 +13,7 @@ import { getR2ConfigFromEnv } from "@/lib/r2/client";
 import { toE164NorthAmerica } from "@/lib/phone/e164";
 import type { KapiooSyncState, OptimizedStop } from "@/types/delivery-run";
 import { runKapiooSync } from "@/lib/kapioo/sync";
+import { isSyntheticStop } from "@/lib/stops/synthetic";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -216,8 +217,10 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const stopAfter = routeAfter?.stops?.[stopIndex] as OptimizedStop | undefined;
     const { OPENPHONE_FROM } = getServerEnv();
-    const rawPhone = String(stopAfter?.customer_phone ?? stop.customer_phone ?? "");
-    const toE164 = toE164NorthAmerica(rawPhone);
+    const smsStop = stopAfter ?? stop;
+    const toE164 = isSyntheticStop(smsStop)
+      ? null
+      : toE164NorthAmerica(smsStop.customer_phone ?? "");
     console.log(
       JSON.stringify({
         event: "complete_with_proof_success",

@@ -15,6 +15,7 @@ import { toE164NorthAmerica } from "@/lib/phone/e164";
 import { formatEtaWindowToronto } from "@/lib/time/etaWindow";
 import { runKapiooDeliveryStartedBatch } from "@/lib/kapioo/delivery-started-sync";
 import type { KapiooSyncState } from "@/types/delivery-run";
+import { isSyntheticStop, getEffectiveServiceTimeMinutes } from "@/lib/stops/synthetic";
 
 const SMS_TEMPLATE =
   "【Kapioo卡皮喔】您的今日餐食正在配送中，预计送达时间为：{eta}。请耐心等待喔~";
@@ -128,7 +129,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       stop.distance_from_previous = distanceKm;
       stop.duration_from_previous = durationMin;
 
-      currentTime = addMinutes(currentTime, 5);
+      currentTime = addMinutes(currentTime, getEffectiveServiceTimeMinutes(stop));
     }
 
     const travelSumKm = round2(
@@ -137,7 +138,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     const travelSumMinutes = round2(
       stops.reduce((sum, s) => sum + (s.duration_from_previous ?? 0), 0)
     );
-    const serviceMinutes = stops.length * 5;
+    const serviceMinutes = round2(
+      stops.reduce((sum, s) => sum + getEffectiveServiceTimeMinutes(s), 0)
+    );
 
     route.total_distance_km = round2(travelSumKm + returnDistanceKm);
     route.total_duration_minutes = round2(
@@ -187,6 +190,8 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     for (let i = 0; i < stops.length; i++) {
       const stop = stops[i];
+      if (isSyntheticStop(stop)) continue;
+
       const toE164 = toE164NorthAmerica(stop.customer_phone ?? "");
       if (!toE164) {
         failedCustomers.push({
@@ -244,7 +249,10 @@ export async function POST(req: NextRequest, { params }: Params) {
     for (let i = 0; i < stops.length; i++) {
       stops[i].kapioo_delivery_started_sync = deliveryStartedSyncs[i];
       const sync = deliveryStartedSyncs[i];
-      if (sync.status !== "skipped" || sync.reason !== "no-order-ids") {
+      if (
+        sync.status !== "skipped" ||
+        (sync.reason !== "no-order-ids" && sync.reason !== "synthetic-stop")
+      ) {
         console.log(
           JSON.stringify({
             event: "delivery_started_kapioo_sync",

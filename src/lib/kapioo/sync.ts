@@ -11,6 +11,7 @@
 import type { KapiooSyncState, OptimizedStop } from "@/types/delivery-run";
 import { getR2ConfigFromEnv } from "@/lib/r2/client";
 import { normalizeOrderIds } from "@/lib/normalization/delivery-run";
+import { isSyntheticStop } from "@/lib/stops/synthetic";
 import { classifyKapiooPostResult } from "./classify-sync-result";
 import {
   getKapiooAdminConfigFromEnv,
@@ -21,7 +22,10 @@ import {
 export interface KapiooSyncInputs {
   runId: string;
   stopIndex: number;
-  stop: Pick<OptimizedStop, "order_ids" | "proof_of_delivery_images" | "completed_at">;
+  stop: Pick<
+    OptimizedStop,
+    "order_ids" | "proof_of_delivery_images" | "completed_at" | "is_synthetic" | "stop_type"
+  >;
   driverName?: string;
   /**
    * Prior `kapioo_sync.attempts` count (if any). The new value is incremented by 1.
@@ -42,6 +46,14 @@ export async function runKapiooSync(inputs: KapiooSyncInputs): Promise<KapiooSyn
   const { runId, stopIndex, stop, driverName, priorAttempts, signal, timeoutMs } = inputs;
   const attemptedAt = new Date().toISOString();
   const nextAttempts = (priorAttempts ?? 0) + 1;
+
+  if (isSyntheticStop(stop)) {
+    return {
+      status: "skipped",
+      reason: "synthetic-stop",
+      attempted_at: attemptedAt,
+    };
+  }
 
   // 1. SSOT: stop.order_ids. No fallback.
   const orderIds = normalizeOrderIds(stop.order_ids) ?? [];

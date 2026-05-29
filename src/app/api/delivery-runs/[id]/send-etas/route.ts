@@ -12,6 +12,7 @@ import { formatEtaWindowToronto } from "@/lib/time/etaWindow";
 import { verifyDriverToken } from "@/lib/security/driverToken";
 import { verifyAdminSession } from "@/lib/auth/adminSession";
 import { SESSION_COOKIE_NAME } from "@/lib/auth/adminSession";
+import { isSyntheticStop } from "@/lib/stops/synthetic";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -59,6 +60,8 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     for (let i = 0; i < stops.length; i++) {
       const stop = stops[i];
+      if (isSyntheticStop(stop)) continue;
+
       const toE164 = toE164NorthAmerica(stop.customer_phone ?? "");
       if (!toE164) {
         failedCustomers.push({

@@ -5,6 +5,7 @@
 
 import type { KapiooSyncState, OptimizedStop } from "@/types/delivery-run";
 import { normalizeOrderIds } from "@/lib/normalization/delivery-run";
+import { isSyntheticStop } from "@/lib/stops/synthetic";
 import { classifyKapiooPostResult } from "./classify-sync-result";
 import {
   getKapiooAdminConfigFromEnv,
@@ -17,7 +18,7 @@ const DEFAULT_TIMEOUT_MS = 5000;
 export interface KapiooDeliveryStartedSyncInputs {
   runId: string;
   stopIndex: number;
-  stop: Pick<OptimizedStop, "order_ids" | "arrival_time">;
+  stop: Pick<OptimizedStop, "order_ids" | "arrival_time" | "is_synthetic" | "stop_type">;
   startedAt: string;
   driverName?: string;
   timeoutMs?: number;
@@ -26,7 +27,9 @@ export interface KapiooDeliveryStartedSyncInputs {
 
 export interface KapiooDeliveryStartedBatchInputs {
   runId: string;
-  stops: Array<Pick<OptimizedStop, "order_ids" | "arrival_time">>;
+  stops: Array<
+    Pick<OptimizedStop, "order_ids" | "arrival_time" | "is_synthetic" | "stop_type">
+  >;
   startedAt: string;
   driverName?: string;
   timeoutMs?: number;
@@ -50,6 +53,14 @@ export async function runKapiooDeliveryStartedSync(
   const timeoutMs = inputs.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const attemptedAt = new Date().toISOString();
   const attempts = 1;
+
+  if (isSyntheticStop(stop)) {
+    return {
+      status: "skipped",
+      reason: "synthetic-stop",
+      attempted_at: attemptedAt,
+    };
+  }
 
   const orderIds = normalizeOrderIds(stop.order_ids) ?? [];
   if (orderIds.length === 0) {

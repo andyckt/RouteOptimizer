@@ -10,6 +10,7 @@ import { getServerEnv } from "@/lib/env";
 import { toE164NorthAmerica } from "@/lib/phone/e164";
 import { assertRateLimit } from "@/lib/rate-limit";
 import type { DeliveryCustomer } from "@/types/delivery-run";
+import { isSyntheticStop } from "@/lib/stops/synthetic";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -121,6 +122,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     for (const idx of indicesToMessage) {
       const c = customers[idx];
+      if (isSyntheticStop(c)) continue;
       const name = (c.name ?? "").trim() || "(no name)";
       const phoneRaw = (c.phone ?? "").trim();
       const toE164 = toE164NorthAmerica(phoneRaw);

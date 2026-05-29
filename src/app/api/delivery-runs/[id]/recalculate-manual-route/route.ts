@@ -14,6 +14,7 @@ import {
 } from "@/lib/normalization/delivery-run";
 import { assertManualOrderRespectsFixedStops } from "@/lib/validation/fixed-stop-position";
 import { requireAdminSession } from "@/lib/auth/requireAdmin";
+import { getEffectiveServiceTimeMinutes } from "@/lib/stops/synthetic";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -142,7 +143,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       stop.duration_from_previous = durationMin;
       stop.completed = false;
 
-      currentTime = addMinutes(currentTime, 5);
+      currentTime = addMinutes(currentTime, getEffectiveServiceTimeMinutes(customer));
     }
 
     let returnDistanceKm = 0;
@@ -181,7 +182,17 @@ export async function POST(req: NextRequest, { params }: Params) {
     const travelSumMinutes = round2(
       reorderedStops.reduce((sum, s) => sum + (s.duration_from_previous ?? 0), 0)
     );
-    const serviceMinutes = reorderedStops.length * 5;
+    const serviceMinutes = round2(
+      reorderedStops.reduce((sum, s) => {
+        const customer =
+          typeof s.customer_index === "number" &&
+          s.customer_index >= 0 &&
+          s.customer_index < customers.length
+            ? customers[s.customer_index]
+            : undefined;
+        return sum + getEffectiveServiceTimeMinutes(customer ?? s);
+      }, 0)
+    );
 
     run.optimized_route = {
       stops: sanitizeStops(reorderedStops),

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import Image from "next/image";
 import type { DeliveryRun, DeliveryCustomer, OptimizedStop } from "@/types/delivery-run";
+import { isSyntheticStop } from "@/lib/stops/synthetic";
 
 function formatDuration(minutes: number): string {
   const h = Math.floor(minutes / 60);
@@ -358,6 +359,11 @@ export function DriverRouteView({
                     </div>
                     <div className="flex-1 min-w-0">
                       <span className="block font-semibold text-slate-900 truncate">{stop.customer_name}</span>
+                      {isSyntheticStop(stop) && (
+                        <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-violet-100 text-violet-800">
+                          Handoff
+                        </span>
+                      )}
                       {stop.customer_address && (
                         <span className="block text-xs text-slate-500 truncate mt-0.5">{stop.customer_address}</span>
                       )}
@@ -403,6 +409,11 @@ export function DriverRouteView({
                     <div className="flex justify-between items-start gap-2">
                       <div className="flex items-center gap-2 flex-wrap min-w-0">
                         <span className="text-base font-semibold text-slate-900">{stop.customer_name}</span>
+                        {isSyntheticStop(stop) && (
+                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wide bg-violet-100 text-violet-800">
+                            Handoff
+                          </span>
+                        )}
                         {stop.completed && (
                           <>
                             <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
