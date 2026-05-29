@@ -48,6 +48,8 @@ export interface BuildRunIntegrationResponseOptions {
 export interface IntegrationRunResponse {
   error?: string | null;
   code?: string | null;
+  preview?: boolean;
+  persisted?: boolean;
   run_created_as_draft?: boolean;
   run_id: string | null;
   status: string | null;
@@ -95,6 +97,8 @@ export function buildRunIntegrationResponse(
   return {
     error: null,
     code: null,
+    preview: undefined,
+    persisted: undefined,
     run_created_as_draft: undefined,
     run_id: runId,
     status: run.status ?? null,
@@ -162,5 +166,195 @@ export function buildIntegrationErrorResponse(
     code: opts.code,
     run_created_as_draft: opts.run_created_as_draft,
     run_id: runId,
+  };
+}
+
+export interface BuildPreviewRunResponseOptions {
+  warnings?: string[];
+  geocode_failures?: GeocodeFailure[];
+  validation_errors?: ValidationIssue[];
+}
+
+export type BatchItemStatus = "success" | "failed" | "replayed";
+
+export interface BatchRunItemResult {
+  index: number;
+  status: BatchItemStatus;
+  run_id: string | null;
+  external_id: string | null;
+  idempotency_key: string | null;
+  driver_name: string;
+  details_link: string | null;
+  driver_link: string | null;
+  total_duration_minutes: number | null;
+  total_distance_km: number | null;
+  estimated_finish_time: string | null;
+  optimized_route: RunForResponse["optimized_route"] | null;
+  geocode_failures: GeocodeFailure[];
+  validation_errors: ValidationIssue[];
+  warnings: string[];
+  error?: string | null;
+  code?: string | null;
+  run_created_as_draft?: boolean;
+}
+
+export type BatchOverallStatus = "success" | "partial" | "failed";
+
+export interface BatchIntegrationResponse {
+  planning_session_id: string;
+  status: BatchOverallStatus;
+  total_requested: number;
+  total_succeeded: number;
+  total_failed: number;
+  runs: BatchRunItemResult[];
+  errors: ValidationIssue[];
+}
+
+export function integrationResponseToBatchItem(
+  index: number,
+  itemStatus: BatchItemStatus,
+  driverName: string,
+  body: IntegrationRunResponse | { error: string; code: string; run_id: string }
+): BatchRunItemResult {
+  if ("code" in body && body.code === "IDEMPOTENCY_CONFLICT") {
+    return {
+      index,
+      status: "failed",
+      run_id: body.run_id,
+      external_id: null,
+      idempotency_key: null,
+      driver_name: driverName,
+      details_link: null,
+      driver_link: null,
+      total_duration_minutes: null,
+      total_distance_km: null,
+      estimated_finish_time: null,
+      optimized_route: null,
+      geocode_failures: [],
+      validation_errors: [],
+      warnings: [],
+      error: body.error,
+      code: body.code,
+      run_created_as_draft: false,
+    };
+  }
+
+  const r = body as IntegrationRunResponse;
+  return {
+    index,
+    status: itemStatus,
+    run_id: r.run_id,
+    external_id: r.external_id,
+    idempotency_key: r.idempotency_key,
+    driver_name: driverName,
+    details_link: r.details_link,
+    driver_link: r.driver_link,
+    total_duration_minutes: r.total_duration_minutes,
+    total_distance_km: r.total_distance_km,
+    estimated_finish_time: r.estimated_finish_time,
+    optimized_route: r.optimized_route,
+    geocode_failures: r.geocode_failures ?? [],
+    validation_errors: r.validation_errors ?? [],
+    warnings: r.warnings ?? [],
+    error: r.error ?? null,
+    code: r.code ?? null,
+    run_created_as_draft: r.run_created_as_draft,
+  };
+}
+
+export function deriveBatchStatus(
+  items: BatchRunItemResult[]
+): BatchOverallStatus {
+  const succeeded = items.filter((i) => i.status === "success" || i.status === "replayed").length;
+  const failed = items.filter((i) => i.status === "failed").length;
+  if (failed === 0) return "success";
+  if (succeeded === 0) return "failed";
+  return "partial";
+}
+
+/** 201 only when all items are newly created successes; otherwise 200. */
+export function deriveBatchHttpStatus(items: BatchRunItemResult[]): number {
+  const status = deriveBatchStatus(items);
+  if (status === "success" && items.every((i) => i.status === "success")) {
+    return 201;
+  }
+  return 200;
+}
+
+export function buildFailedBatchItem(
+  index: number,
+  message: string,
+  code = "INTERNAL_ERROR"
+): BatchRunItemResult {
+  return {
+    index,
+    status: "failed",
+    run_id: null,
+    external_id: null,
+    idempotency_key: null,
+    driver_name: "",
+    details_link: null,
+    driver_link: null,
+    total_duration_minutes: null,
+    total_distance_km: null,
+    estimated_finish_time: null,
+    optimized_route: null,
+    geocode_failures: [],
+    validation_errors: [{ message }],
+    warnings: [],
+    error: message,
+    code,
+    run_created_as_draft: false,
+  };
+}
+
+export function buildBatchIntegrationResponse(
+  planning_session_id: string,
+  items: BatchRunItemResult[],
+  batchErrors: ValidationIssue[] = []
+): BatchIntegrationResponse {
+  const total_requested = items.length;
+  const total_succeeded = items.filter(
+    (i) => i.status === "success" || i.status === "replayed"
+  ).length;
+  const total_failed = items.filter((i) => i.status === "failed").length;
+
+  return {
+    planning_session_id,
+    status: deriveBatchStatus(items),
+    total_requested,
+    total_succeeded,
+    total_failed,
+    runs: items,
+    errors: batchErrors,
+  };
+}
+
+/** In-memory optimize-preview result (no DB record). */
+export function buildPreviewRunResponse(
+  run: RunForResponse,
+  opts?: BuildPreviewRunResponseOptions
+): IntegrationRunResponse {
+  const route = run.optimized_route ?? null;
+  return {
+    error: null,
+    code: null,
+    preview: true,
+    persisted: false,
+    run_created_as_draft: false,
+    run_id: null,
+    status: "preview",
+    planning_session_id: run.planning_session_id ?? null,
+    external_id: run.external_id ?? null,
+    idempotency_key: run.idempotency_key ?? null,
+    details_link: null,
+    driver_link: null,
+    total_duration_minutes: route?.total_duration_minutes ?? null,
+    total_distance_km: route?.total_distance_km ?? null,
+    estimated_finish_time: computeEstimatedFinishTime(run),
+    optimized_route: route,
+    geocode_failures: opts?.geocode_failures ?? [],
+    validation_errors: opts?.validation_errors ?? [],
+    warnings: opts?.warnings ?? [],
   };
 }

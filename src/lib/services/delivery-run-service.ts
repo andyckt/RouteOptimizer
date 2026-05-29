@@ -10,6 +10,7 @@ import { notFound, validationError } from "@/lib/http/errors";
 import { todayYYYYMMDD } from "@/lib/dates";
 import type {
   DeliveryCustomer,
+  OptimizedRoute,
   OptimizedStop,
   TravelMode,
 } from "@/types/delivery-run";
@@ -121,17 +122,23 @@ export async function createDeliveryRunFromPayload(
   return DeliveryRunModel.create(doc) as Promise<DeliveryRunDoc>;
 }
 
+export interface RunOptimizeInput {
+  run_date: string;
+  start_time: string;
+  travel_mode: TravelMode;
+  start_location: string;
+  end_location?: string;
+}
+
 /**
- * Geocodes a run's customers in place and saves. Returns the list of failures.
- * - Skips stops already resolved via override_success.
- * - Skips stops that already have valid lat/lng with geocode_status "success"
- *   (so caller-provided coordinates are not re-geocoded).
+ * Geocodes customers in memory (no DB write). Used by preview and geocodeRunCustomers.
  */
-export async function geocodeRunCustomers(
-  run: DeliveryRunDoc
-): Promise<GeocodeFailure[]> {
-  const rawCustomers = JSON.parse(JSON.stringify(run.customers ?? []));
-  const customers = sanitizeCustomers(rawCustomers as DeliveryCustomer[]);
+export async function geocodeCustomersInMemory(
+  rawCustomers: DeliveryCustomer[]
+): Promise<{ customers: DeliveryCustomer[]; failures: GeocodeFailure[] }> {
+  const customers = sanitizeCustomers(
+    JSON.parse(JSON.stringify(rawCustomers)) as DeliveryCustomer[]
+  );
   const failures: GeocodeFailure[] = [];
 
   for (let i = 0; i < customers.length; i++) {
@@ -177,24 +184,37 @@ export async function geocodeRunCustomers(
     }
   }
 
-  run.customers = sanitizeCustomers(customers);
+  return { customers: sanitizeCustomers(customers), failures };
+}
+
+/**
+ * Geocodes a run's customers in place and saves. Returns the list of failures.
+ * - Skips stops already resolved via override_success.
+ * - Skips stops that already have valid lat/lng with geocode_status "success"
+ *   (so caller-provided coordinates are not re-geocoded).
+ */
+export async function geocodeRunCustomers(
+  run: DeliveryRunDoc
+): Promise<GeocodeFailure[]> {
+  const rawCustomers = JSON.parse(JSON.stringify(run.customers ?? [])) as DeliveryCustomer[];
+  const { customers, failures } = await geocodeCustomersInMemory(rawCustomers);
+  run.customers = customers;
   await run.save();
   return failures;
 }
 
 /**
- * Optimizes a run by id and persists the result. Extracted verbatim from
- * POST /api/delivery-runs/{id}/optimize so admin behavior is unchanged.
+ * Pure optimize: Fleet + Directions for a run payload. No DB read/write.
+ * Used by optimize-preview and optimizeDeliveryRunById.
  */
-export async function optimizeDeliveryRunById(
-  id: string
-): Promise<DeliveryRunDoc> {
-  await connectDB();
-  const run = await DeliveryRunModel.findById(id);
-  if (!run) throw notFound("Delivery run not found");
-
-  const rawCustomers = JSON.parse(JSON.stringify(run.customers ?? []));
-  const customers = sanitizeCustomers(rawCustomers as DeliveryCustomer[]);
+export async function computeOptimizedRouteForRun(
+  input: RunOptimizeInput,
+  rawCustomers: DeliveryCustomer[],
+  opts?: { priorStops?: OptimizedStop[] }
+): Promise<{ customers: DeliveryCustomer[]; optimizedRoute: OptimizedRoute }> {
+  const customers = sanitizeCustomers(
+    JSON.parse(JSON.stringify(rawCustomers)) as DeliveryCustomer[]
+  );
   if (customers.length === 0) {
     throw validationError("No valid customers to optimize.");
   }
@@ -211,7 +231,7 @@ export async function optimizeDeliveryRunById(
     .map((c, idx) => ({ c, idx }))
     .filter((x) => x.c.is_end_point);
 
-  const startGeocode = await geocodeAddress(run.start_location);
+  const startGeocode = await geocodeAddress(input.start_location);
   if (!startGeocode) {
     throw validationError("Start location could not be geocoded.");
   }
@@ -242,8 +262,8 @@ export async function optimizeDeliveryRunById(
   if (endPoint) {
     const endpointRouting = toRoutingCoords(endPoint.c);
     endLocationCoords = endpointRouting.coords;
-  } else if (run.end_location?.trim()) {
-    const endGeocode = await geocodeAddress(run.end_location);
+  } else if (input.end_location?.trim()) {
+    const endGeocode = await geocodeAddress(input.end_location);
     if (endGeocode) {
       endLocationCoords = { lat: endGeocode.lat, lng: endGeocode.lng };
     }
@@ -262,8 +282,8 @@ export async function optimizeDeliveryRunById(
     };
   });
 
-  const globalStartTime = `${run.run_date}T${run.start_time}:00-05:00`;
-  const globalEndTime = `${run.run_date}T23:59:59-05:00`;
+  const globalStartTime = `${input.run_date}T${input.start_time}:00-05:00`;
+  const globalEndTime = `${input.run_date}T23:59:59-05:00`;
 
   const fleet =
     shipments.length > 0
@@ -289,7 +309,7 @@ export async function optimizeDeliveryRunById(
                   longitude: endLocationCoords.lng,
                 }
               : undefined,
-            travelMode: run.travel_mode === "ebike" ? "BICYCLING" : "DRIVING",
+            travelMode: input.travel_mode === "ebike" ? "BICYCLING" : "DRIVING",
           },
         })
       : { routes: [] };
@@ -338,16 +358,16 @@ export async function optimizeDeliveryRunById(
     finalOrder = fillSkeletonWithFlexibleOrder(skeleton, flexOrdered);
   }
 
-  const priorStops = (run.optimized_route?.stops ?? []) as OptimizedStop[];
+  const priorStops = opts?.priorStops ?? [];
 
   const computed = await computeOptimizedRouteFromSequence({
     customerIndicesInOrder: finalOrder,
     customers,
     run: {
-      run_date: run.run_date,
-      start_time: run.start_time,
-      travel_mode: run.travel_mode,
-      end_location: run.end_location,
+      run_date: input.run_date,
+      start_time: input.start_time,
+      travel_mode: input.travel_mode,
+      end_location: input.end_location,
     },
     startCoords,
     endLocationCoords: !endPoint ? endLocationCoords : undefined,
@@ -355,18 +375,50 @@ export async function optimizeDeliveryRunById(
     priorStops,
   });
 
+  return {
+    customers,
+    optimizedRoute: {
+      stops: sanitizeStops(computed.stops),
+      encoded_polyline: computed.encodedPolyline,
+      return_distance_km: computed.returnDistanceKm,
+      return_duration_minutes: computed.returnDurationMinutes,
+      total_distance_km: computed.totalDistanceKm,
+      total_duration_minutes: computed.totalDurationMinutes,
+      start_lat: computed.startLat,
+      start_lng: computed.startLng,
+    },
+  };
+}
+
+/**
+ * Optimizes a run by id and persists the result. Extracted verbatim from
+ * POST /api/delivery-runs/{id}/optimize so admin behavior is unchanged.
+ */
+export async function optimizeDeliveryRunById(
+  id: string
+): Promise<DeliveryRunDoc> {
+  await connectDB();
+  const run = await DeliveryRunModel.findById(id);
+  if (!run) throw notFound("Delivery run not found");
+
+  const rawCustomers = JSON.parse(JSON.stringify(run.customers ?? [])) as DeliveryCustomer[];
+  const priorStops = (run.optimized_route?.stops ?? []) as OptimizedStop[];
+
+  const { customers, optimizedRoute } = await computeOptimizedRouteForRun(
+    {
+      run_date: run.run_date,
+      start_time: run.start_time,
+      travel_mode: run.travel_mode,
+      start_location: run.start_location,
+      end_location: run.end_location,
+    },
+    rawCustomers,
+    { priorStops }
+  );
+
   run.customers = customers;
   run.status = "optimized";
-  run.optimized_route = {
-    stops: sanitizeStops(computed.stops),
-    encoded_polyline: computed.encodedPolyline,
-    return_distance_km: computed.returnDistanceKm,
-    return_duration_minutes: computed.returnDurationMinutes,
-    total_distance_km: computed.totalDistanceKm,
-    total_duration_minutes: computed.totalDurationMinutes,
-    start_lat: computed.startLat,
-    start_lng: computed.startLng,
-  };
+  run.optimized_route = optimizedRoute;
   await run.save();
 
   return run;
