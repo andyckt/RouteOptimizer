@@ -49,28 +49,10 @@ export async function geocodeAddressesBatch(
     const query = buildGeocodeQuery(item);
     const detailed = await geocodeAddressDetailed(query);
 
-    if (detailed.rate_limited) {
-      throw new ApiError(
-        429,
-        detailed.error,
-        "RATE_LIMITED"
-      );
-    }
-
-    if (detailed.ok) {
-      results.push({
-        client_ref: item.client_ref,
-        input_address: item.address,
-        formatted_address: detailed.formatted_address,
-        lat: detailed.lat,
-        lng: detailed.lng,
-        geocode_status: detailed.geocode_status,
-        confidence: detailed.confidence,
-        location_type: detailed.location_type,
-        provider: detailed.provider,
-        status: "success",
-      });
-    } else {
+    if (!detailed.ok) {
+      if (detailed.rate_limited) {
+        throw new ApiError(429, detailed.error, "RATE_LIMITED");
+      }
       results.push({
         client_ref: item.client_ref,
         input_address: item.address,
@@ -80,7 +62,21 @@ export async function geocodeAddressesBatch(
         status: "failed",
         error: detailed.error,
       });
+      continue;
     }
+
+    results.push({
+      client_ref: item.client_ref,
+      input_address: item.address,
+      formatted_address: detailed.formatted_address,
+      lat: detailed.lat,
+      lng: detailed.lng,
+      geocode_status: detailed.geocode_status,
+      confidence: detailed.confidence,
+      location_type: detailed.location_type,
+      provider: detailed.provider,
+      status: "success",
+    });
   }
 
   const total_succeeded = results.filter((r) => r.status === "success").length;
