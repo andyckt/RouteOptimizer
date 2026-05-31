@@ -31,7 +31,7 @@ Content-Type: application/json
 
 Admin session cookies and driver link tokens are **separate** and are not used on these routes.
 
-Rate limits (per client IP, in-memory): create-and-optimize 20/min, optimize-preview 30/min, batch 10/min.
+Rate limits (per client IP, in-memory): create-and-optimize 20/min, optimize-preview 30/min, batch 10/min, geocode-addresses 20/min.
 
 ## Endpoints
 
@@ -40,6 +40,7 @@ Rate limits (per client IP, in-memory): create-and-optimize 20/min, optimize-pre
 | `POST` | `/api/integrations/runs/optimize-preview` | Validate, geocode, optimize **in memory** — no DB write |
 | `POST` | `/api/integrations/runs/create-and-optimize` | Create one run, geocode, optimize, persist |
 | `POST` | `/api/integrations/runs/batch-create-and-optimize` | Same as single, up to **10** runs per batch |
+| `POST` | `/api/integrations/geocode-addresses` | Batch geocode addresses only — **no run created**, no DB write |
 
 Base URL is your deployed Route Optimizer origin (e.g. `https://delivery.kapioo.com`).
 
@@ -173,6 +174,82 @@ Base URL is your deployed Route Optimizer origin (e.g. `https://delivery.kapioo.
   "errors": []
 }
 ```
+
+---
+
+### 4. Geocode addresses (no persistence)
+
+**Use when:** Kapioo Admin / Delivery Agent needs `lat`/`lng` per order **before** route planning (split, meet-up, assignment) without creating a delivery run.
+
+- Does **not** create or update `DeliveryRun` records
+- Does **not** send SMS or driver messages
+- `idempotency_key` is accepted for correlation only (no replay store)
+- Up to **50** addresses per request; geocoded **sequentially** (one Google call each)
+- **No geocode result cache** across requests
+
+**Example request:**
+
+```json
+{
+  "created_by_integration": "kapioo-admin",
+  "idempotency_key": "kapioo-geocode:2026-06-09:abc123",
+  "addresses": [
+    {
+      "client_ref": "DD-90000001",
+      "address": "Unit 1205, 25 Greenview Ave, North York M2M 1R4, Canada",
+      "area": "North York",
+      "country": "Canada"
+    }
+  ]
+}
+```
+
+**Response (success — HTTP 200):**
+
+```json
+{
+  "status": "completed",
+  "total_requested": 1,
+  "total_succeeded": 1,
+  "total_failed": 0,
+  "results": [
+    {
+      "client_ref": "DD-90000001",
+      "input_address": "Unit 1205, 25 Greenview Ave, North York M2M 1R4, Canada",
+      "formatted_address": "25 Greenview Ave, North York, ON ...",
+      "lat": 43.8123,
+      "lng": -79.4012,
+      "geocode_status": "OK",
+      "confidence": "high",
+      "location_type": "ROOFTOP",
+      "provider": "google",
+      "status": "success"
+    }
+  ],
+  "errors": []
+}
+```
+
+Per-item failures use `status: "failed"` with `geocode_status` (e.g. `ZERO_RESULTS`) and `error`. Top-level `status` remains `"completed"` when the batch finishes (including partial failure).
+
+**Validation (HTTP 400):**
+
+```json
+{
+  "error": "Validation failed",
+  "code": "VALIDATION_ERROR",
+  "errors": [{ "field": "addresses[0].client_ref", "message": "client_ref is required." }]
+}
+```
+
+**Rate limits:**
+
+| Source | HTTP | Body / headers |
+|--------|------|----------------|
+| App (per IP) | 429 | `code: "RATE_LIMITED"`, `retry_after_seconds: 60`, `Retry-After: 60` |
+| Google Geocoding API (`OVER_QUERY_LIMIT`) | 429 | Same; batch aborts on first provider rate limit (retry whole batch) |
+
+**Note:** `optimize-preview` does **not** return per-customer coordinates on success — use this endpoint when Kapioo needs coords upstream of optimization.
 
 ---
 
