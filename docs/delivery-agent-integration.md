@@ -31,7 +31,7 @@ Content-Type: application/json
 
 Admin session cookies and driver link tokens are **separate** and are not used on these routes.
 
-Rate limits (per client IP, in-memory): create-and-optimize 20/min, optimize-preview 30/min, batch 10/min, geocode-addresses 20/min.
+Rate limits (per client IP, in-memory): create-and-optimize 20/min, optimize-preview 30/min, batch 10/min, geocode-addresses 20/min, runs-by-date 30/min.
 
 ## Endpoints
 
@@ -41,6 +41,7 @@ Rate limits (per client IP, in-memory): create-and-optimize 20/min, optimize-pre
 | `POST` | `/api/integrations/runs/create-and-optimize` | Create one run, geocode, optimize, persist |
 | `POST` | `/api/integrations/runs/batch-create-and-optimize` | Same as single, up to **10** runs per batch |
 | `POST` | `/api/integrations/geocode-addresses` | Batch geocode addresses only — **no run created**, no DB write |
+| `GET` | `/api/integrations/runs/by-date` | Read-only historical runs for one delivery date — **no DB write** |
 
 Base URL is your deployed Route Optimizer origin (e.g. `https://delivery.kapioo.com`).
 
@@ -298,6 +299,98 @@ Lookup order for create-and-optimize:
 | Existing run, conflicting payload | 409 | `IDEMPOTENCY_CONFLICT` + `run_id` |
 
 **Race condition:** MongoDB indexes on `idempotency_key` / `external_id` are **sparse and non-unique**. Two simultaneous requests with the same key could rarely create two runs. Safe for admin-paced retries; consider **unique sparse indexes** before unattended cron automation.
+
+---
+
+### 5. Historical runs by date (read-only)
+
+**Use when:** Kapioo Admin needs historical Route Optimizer runs for one delivery day (e.g. Delivery Agent learning). Does not create, update, optimize, geocode, or delete runs.
+
+**Request:**
+
+```http
+GET /api/integrations/runs/by-date?date=2026-05-31
+Authorization: Bearer <ROUTE_OPTIMIZER_INBOUND_TOKEN>
+```
+
+**Query parameters:**
+
+| Parameter | Required | Default | Description |
+|-----------|----------|---------|-------------|
+| `date` | Yes | — | Business delivery date `YYYY-MM-DD` (matches `run_date` on stored runs) |
+| `include_drafts` | No | `false` | When `true`, includes runs with `status: "draft"` |
+| `require_route` | No | `true` | When `true`, excludes runs with no `optimized_route.stops` |
+
+**Example:**
+
+```bash
+curl -X GET "$ROUTE_OPTIMIZER_BASE_URL/api/integrations/runs/by-date?date=2026-05-31" \
+  -H "Authorization: Bearer $ROUTE_OPTIMIZER_INBOUND_TOKEN"
+```
+
+**Success response (excerpt):**
+
+```json
+{
+  "status": "success",
+  "date": "2026-05-31",
+  "timezone_note": "run_date is a business calendar date (YYYY-MM-DD), not a UTC instant.",
+  "count": 2,
+  "runs": [
+    {
+      "run_id": "...",
+      "run_date": "2026-05-31",
+      "driver_name": "DT",
+      "status": "completed",
+      "actual_start_time": "2026-05-31T14:32:00.000Z",
+      "run_completed_at": "2026-05-31T18:45:00.000Z",
+      "eta_basis": "post_start",
+      "stops": [
+        {
+          "sequence": 0,
+          "customer_name": "Donald-1111",
+          "customer_phone": "4379891111",
+          "order_ids": ["ORD-1001"],
+          "eta_basis": "post_start",
+          "completed_at": "2026-05-31T18:22:00.000Z",
+          "is_synthetic": false,
+          "stop_type": "customer"
+        }
+      ],
+      "customers": []
+    }
+  ],
+  "metadata": {
+    "deleted_runs_excluded": true,
+    "deleted_runs_behavior": "hard_deleted_unavailable",
+    "draft_runs_excluded": true,
+    "supports_post_start_eta": "derived_by_actual_start_time",
+    "warnings": []
+  },
+  "warnings": []
+}
+```
+
+**`eta_basis` (run and stop level):**
+
+| Value | Meaning |
+|-------|---------|
+| `post_start` | `actual_start_time` is set; `eta` / `arrival_time` reflect timing after driver clicked Start Delivery |
+| `planned` | Run never started; ETAs are from optimization / manual recalc only — **not** for post-start learning |
+| `unknown` | No ETA fields available |
+
+When `eta_basis` is `planned`, the response includes a warning per affected run: do not use ETA for post-start learning.
+
+**Order matching (Kapioo Admin):** Prefer `stops[].order_ids`. Legacy runs may lack order IDs; match using `customer_name` + last 4 digits of `customer_phone` (e.g. `Donald-1111` + `4379891111`).
+
+**Limitations:**
+
+- **Hard-deleted runs** are not returned (`include_deleted` not supported).
+- **No `is_test` flag** — all non-draft runs for the date are returned; Admin classifies learning examples.
+- **Pre-start ETA is overwritten** on Start Delivery; only `eta_basis: "post_start"` ETAs are valid for post-start learning.
+- **`run_completed_at`** is derived as max `stops[].completed_at`, not a stored run field.
+- **Stop sequence** is the final stored order (including manual reorder), not the first optimization order.
+- Response omits `encoded_polyline`, driver links/tokens, proof-of-delivery URLs, and SMS bodies.
 
 ---
 
