@@ -4,6 +4,7 @@
  */
 
 import { makeDriverToken } from "@/lib/security/driverToken";
+import type { GoogleApiCostEstimate } from "@/lib/integration/googleApiBudget";
 
 export interface GeocodeFailure {
   index: number;
@@ -43,6 +44,7 @@ export interface BuildRunIntegrationResponseOptions {
   geocode_failures?: GeocodeFailure[];
   validation_errors?: ValidationIssue[];
   warnings?: string[];
+  google_cost_estimate?: GoogleApiCostEstimate | null;
 }
 
 export interface IntegrationRunResponse {
@@ -62,6 +64,7 @@ export interface IntegrationRunResponse {
   total_distance_km: number | null;
   estimated_finish_time: string | null;
   optimized_route: RunForResponse["optimized_route"] | null;
+  google_cost_estimate?: GoogleApiCostEstimate | null;
   geocode_failures: GeocodeFailure[];
   validation_errors: ValidationIssue[];
   warnings: string[];
@@ -111,6 +114,7 @@ export function buildRunIntegrationResponse(
     total_distance_km: route?.total_distance_km ?? null,
     estimated_finish_time: computeEstimatedFinishTime(run),
     optimized_route: route,
+    google_cost_estimate: opts.google_cost_estimate,
     geocode_failures: opts.geocode_failures ?? [],
     validation_errors: opts.validation_errors ?? [],
     warnings: opts.warnings ?? [],
@@ -127,6 +131,7 @@ export interface BuildIntegrationErrorResponseOptions {
   run?: RunForResponse | null;
   origin?: string;
   geocode_failures?: GeocodeFailure[];
+  google_cost_estimate?: GoogleApiCostEstimate | null;
 }
 
 /** Structured 422 envelope for integration constraint / geocode / optimize failures. */
@@ -142,6 +147,7 @@ export function buildIntegrationErrorResponse(
         geocode_failures: opts.geocode_failures,
         validation_errors: opts.validation_errors,
         warnings: opts.warnings,
+        google_cost_estimate: opts.google_cost_estimate,
       })
     : {
         run_id: runId,
@@ -155,6 +161,7 @@ export function buildIntegrationErrorResponse(
         total_distance_km: null,
         estimated_finish_time: null,
         optimized_route: null,
+        google_cost_estimate: opts.google_cost_estimate,
         geocode_failures: opts.geocode_failures ?? [],
         validation_errors: opts.validation_errors,
         warnings: opts.warnings ?? [],
@@ -173,6 +180,7 @@ export interface BuildPreviewRunResponseOptions {
   warnings?: string[];
   geocode_failures?: GeocodeFailure[];
   validation_errors?: ValidationIssue[];
+  google_cost_estimate?: GoogleApiCostEstimate | null;
 }
 
 export type BatchItemStatus = "success" | "failed" | "replayed";
@@ -190,6 +198,7 @@ export interface BatchRunItemResult {
   total_distance_km: number | null;
   estimated_finish_time: string | null;
   optimized_route: RunForResponse["optimized_route"] | null;
+  google_cost_estimate?: GoogleApiCostEstimate | null;
   geocode_failures: GeocodeFailure[];
   validation_errors: ValidationIssue[];
   warnings: string[];
@@ -230,6 +239,7 @@ export function integrationResponseToBatchItem(
       total_distance_km: null,
       estimated_finish_time: null,
       optimized_route: null,
+      google_cost_estimate: null,
       geocode_failures: [],
       validation_errors: [],
       warnings: [],
@@ -253,6 +263,7 @@ export function integrationResponseToBatchItem(
     total_distance_km: r.total_distance_km,
     estimated_finish_time: r.estimated_finish_time,
     optimized_route: r.optimized_route,
+    google_cost_estimate: r.google_cost_estimate,
     geocode_failures: r.geocode_failures ?? [],
     validation_errors: r.validation_errors ?? [],
     warnings: r.warnings ?? [],
@@ -299,6 +310,7 @@ export function buildFailedBatchItem(
     total_distance_km: null,
     estimated_finish_time: null,
     optimized_route: null,
+    google_cost_estimate: null,
     geocode_failures: [],
     validation_errors: [{ message }],
     warnings: [],
@@ -353,6 +365,7 @@ export function buildPreviewRunResponse(
     total_distance_km: route?.total_distance_km ?? null,
     estimated_finish_time: computeEstimatedFinishTime(run),
     optimized_route: route,
+    google_cost_estimate: opts?.google_cost_estimate,
     geocode_failures: opts?.geocode_failures ?? [],
     validation_errors: opts?.validation_errors ?? [],
     warnings: opts?.warnings ?? [],

@@ -27,6 +27,12 @@ import {
   parseIntegrationRunPayload,
   type IncomingBody,
 } from "@/lib/integration/parseRunPayload";
+import {
+  estimateRunGoogleApiCost,
+  googleApiBudgetViolations,
+  logGoogleApiCostEstimate,
+  GOOGLE_API_BUDGET_EXCEEDED_CODE,
+} from "@/lib/integration/googleApiBudget";
 
 export type CreateAndOptimizeItemStatus = "success" | "replayed" | "failed";
 
@@ -160,6 +166,35 @@ export async function createAndOptimizeIntegrationRun(
     }
   }
 
+  const googleCostEstimate = estimateRunGoogleApiCost({
+    customers: parsed.sanitizedCustomers,
+    end_location: run.end_location,
+  });
+  const budgetIssues = googleApiBudgetViolations(googleCostEstimate);
+  if (budgetIssues.length > 0) {
+    return failedFromIntegrationResponse(
+      buildIntegrationErrorResponse({
+        code: GOOGLE_API_BUDGET_EXCEEDED_CODE,
+        error: "Google API budget exceeded",
+        validation_errors: budgetIssues,
+        warnings,
+        run_created_as_draft: false,
+        runId: null,
+        google_cost_estimate: googleCostEstimate,
+      }),
+      run.driver_name,
+      422
+    );
+  }
+
+  logGoogleApiCostEstimate({
+    event: "integration_create_optimize_google_cost_estimate",
+    estimate: googleCostEstimate,
+    planning_session_id,
+    external_id,
+    idempotency_key,
+  });
+
   const created = await createDeliveryRunFromPayload({
     ...run,
     customers: normalizedCustomers,
@@ -186,6 +221,7 @@ export async function createAndOptimizeIntegrationRun(
         runId,
         run: runDocForResponse(created),
         origin,
+        google_cost_estimate: googleCostEstimate,
       }),
       run.driver_name,
       422
@@ -207,6 +243,7 @@ export async function createAndOptimizeIntegrationRun(
         runId,
         run: runDocForResponse(created),
         origin,
+        google_cost_estimate: googleCostEstimate,
       }),
       run.driver_name,
       422
@@ -220,6 +257,7 @@ export async function createAndOptimizeIntegrationRun(
         runId,
         origin,
         warnings,
+        google_cost_estimate: googleCostEstimate,
       }),
       run.driver_name,
       "success",
@@ -247,6 +285,7 @@ export async function createAndOptimizeIntegrationRun(
           runId,
           run: runDocForResponse(created),
           origin,
+          google_cost_estimate: googleCostEstimate,
         }),
         run.driver_name,
         err.statusCode

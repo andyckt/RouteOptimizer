@@ -15,6 +15,12 @@ import {
   geocodeAddressesBatch,
   GEOCODE_RATE_LIMIT_RETRY_SECONDS,
 } from "@/lib/integration/geocodeAddressesBatch";
+import {
+  estimateGeocodeAddressGoogleApiCost,
+  geocodeAddressBudgetViolations,
+  logGoogleApiCostEstimate,
+  GOOGLE_API_BUDGET_EXCEEDED_CODE,
+} from "@/lib/integration/googleApiBudget";
 
 export const dynamic = "force-dynamic";
 
@@ -53,8 +59,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const googleCostEstimate = estimateGeocodeAddressGoogleApiCost(
+      parsed.payload!.addresses.length
+    );
+    const budgetIssues = geocodeAddressBudgetViolations(googleCostEstimate);
+    if (budgetIssues.length > 0) {
+      return json(
+        {
+          error: "Google API budget exceeded",
+          code: GOOGLE_API_BUDGET_EXCEEDED_CODE,
+          errors: budgetIssues,
+          google_cost_estimate: googleCostEstimate,
+        },
+        { status: 422 }
+      );
+    }
+
+    logGoogleApiCostEstimate({
+      event: "integration_geocode_addresses_google_cost_estimate",
+      estimate: googleCostEstimate,
+      idempotency_key: parsed.payload!.idempotency_key,
+    });
+
     const response = await geocodeAddressesBatch(parsed.payload!.addresses);
-    return json(response);
+    return json({ ...response, google_cost_estimate: googleCostEstimate });
   } catch (err) {
     if (err instanceof ApiError && err.code === "RATE_LIMITED") {
       return json(

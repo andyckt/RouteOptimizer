@@ -31,6 +31,12 @@ import {
   parseIntegrationRunPayload,
   type IncomingBody,
 } from "@/lib/integration/parseRunPayload";
+import {
+  estimateRunGoogleApiCost,
+  googleApiBudgetViolations,
+  logGoogleApiCostEstimate,
+  GOOGLE_API_BUDGET_EXCEEDED_CODE,
+} from "@/lib/integration/googleApiBudget";
 
 export const dynamic = "force-dynamic";
 
@@ -91,6 +97,38 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const googleCostEstimate = estimateRunGoogleApiCost({
+      customers: sanitizedCustomers,
+      end_location: run.end_location,
+    });
+    const budgetIssues = googleApiBudgetViolations(googleCostEstimate);
+    if (budgetIssues.length > 0) {
+      return json(
+        {
+          ...buildIntegrationErrorResponse({
+            code: GOOGLE_API_BUDGET_EXCEEDED_CODE,
+            error: "Google API budget exceeded",
+            validation_errors: budgetIssues,
+            warnings,
+            run_created_as_draft: false,
+            runId: null,
+            google_cost_estimate: googleCostEstimate,
+          }),
+          preview: true,
+          persisted: false,
+        },
+        { status: 422 }
+      );
+    }
+
+    logGoogleApiCostEstimate({
+      event: "integration_optimize_preview_google_cost_estimate",
+      estimate: googleCostEstimate,
+      planning_session_id: meta.planning_session_id,
+      external_id: meta.external_id,
+      idempotency_key: meta.idempotency_key,
+    });
+
     const { customers: geocoded, failures: geocodeFailures } =
       await geocodeCustomersInMemory(sanitizedCustomers);
 
@@ -105,6 +143,7 @@ export async function POST(req: NextRequest) {
             warnings,
             run_created_as_draft: false,
             runId: null,
+            google_cost_estimate: googleCostEstimate,
           }),
           preview: true,
           persisted: false,
@@ -126,6 +165,7 @@ export async function POST(req: NextRequest) {
             warnings,
             run_created_as_draft: false,
             runId: null,
+            google_cost_estimate: googleCostEstimate,
           }),
           preview: true,
           persisted: false,
@@ -148,7 +188,7 @@ export async function POST(req: NextRequest) {
             idempotency_key: meta.idempotency_key,
             optimized_route: optimizedRoute as RunForResponse["optimized_route"],
           },
-          { warnings }
+          { warnings, google_cost_estimate: googleCostEstimate }
         ),
         { status: 200 }
       );
@@ -164,6 +204,7 @@ export async function POST(req: NextRequest) {
               warnings,
               run_created_as_draft: false,
               runId: null,
+              google_cost_estimate: googleCostEstimate,
             }),
             preview: true,
             persisted: false,

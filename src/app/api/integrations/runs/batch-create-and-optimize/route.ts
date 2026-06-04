@@ -11,6 +11,7 @@ import { assertRateLimit } from "@/lib/rate-limit";
 import { requireIntegrationAuth } from "@/lib/auth/requireIntegrationAuth";
 import { createAndOptimizeIntegrationRun } from "@/lib/integration/createAndOptimizeIntegrationRun";
 import { parseBatchPayload, type BatchIncomingBody } from "@/lib/integration/parseBatchPayload";
+import { parseIntegrationRunPayload } from "@/lib/integration/parseRunPayload";
 import {
   buildBatchIntegrationResponse,
   buildFailedBatchItem,
@@ -18,6 +19,13 @@ import {
   integrationResponseToBatchItem,
   type BatchRunItemResult,
 } from "@/lib/integration/buildRunIntegrationResponse";
+import {
+  batchGoogleApiBudgetViolations,
+  estimateRunGoogleApiCost,
+  logGoogleApiCostEstimate,
+  sumGoogleApiCostEstimates,
+  GOOGLE_API_BUDGET_EXCEEDED_CODE,
+} from "@/lib/integration/googleApiBudget";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +77,42 @@ export async function POST(req: NextRequest) {
         { status: 422 }
       );
     }
+
+    const estimatedItems = parsed.items
+      .map((item) => parseIntegrationRunPayload(item))
+      .filter((item) => item.errors.length === 0 && item.run && item.sanitizedCustomers)
+      .map((item) =>
+        estimateRunGoogleApiCost({
+          customers: item.sanitizedCustomers!,
+          end_location: item.run!.end_location,
+        })
+      );
+    const batchGoogleCostEstimate = sumGoogleApiCostEstimates(estimatedItems);
+    const budgetIssues = batchGoogleApiBudgetViolations({
+      totalEstimatedBillableUnits:
+        batchGoogleCostEstimate.estimated_billable_units,
+    });
+    if (budgetIssues.length > 0) {
+      return json(
+        {
+          ...buildBatchIntegrationResponse(
+            parsed.planning_session_id,
+            [],
+            budgetIssues
+          ),
+          error: "Google API budget exceeded",
+          code: GOOGLE_API_BUDGET_EXCEEDED_CODE,
+          google_cost_estimate: batchGoogleCostEstimate,
+        },
+        { status: 422 }
+      );
+    }
+
+    logGoogleApiCostEstimate({
+      event: "integration_batch_create_optimize_google_cost_estimate",
+      estimate: batchGoogleCostEstimate,
+      planning_session_id: parsed.planning_session_id,
+    });
 
     const batchItems: BatchRunItemResult[] = [];
 
