@@ -13,6 +13,7 @@ import {
   sanitizeRunForResponse,
   sanitizeStops,
 } from "@/lib/normalization/delivery-run";
+import { recordRunPayment } from "@/lib/payments/recordRunPayment";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -111,8 +112,14 @@ export async function PUT(request: NextRequest, { params }: Params) {
         };
       }
     }
+    const wasCompleted = run.status === "completed";
     Object.assign(run, updates);
     await run.save();
+
+    // Non-blocking: record payment if admin manually set status to completed
+    if (!wasCompleted && run.status === "completed") {
+      recordRunPayment(run.toObject() as Parameters<typeof recordRunPayment>[0]).catch(() => {});
+    }
 
     const saved = sanitizeRunForResponse(run.toObject());
     return json({

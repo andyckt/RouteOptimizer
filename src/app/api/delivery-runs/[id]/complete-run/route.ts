@@ -6,6 +6,7 @@ import { json, handleApiError } from "@/lib/http/response";
 import { badRequest, notFound, validationError } from "@/lib/http/errors";
 import { verifyDriverToken } from "@/lib/security/driverToken";
 import { sanitizeRunForResponse } from "@/lib/normalization/delivery-run";
+import { recordRunPayment } from "@/lib/payments/recordRunPayment";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -41,6 +42,9 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     run.status = "completed";
     await run.save();
+
+    // Non-blocking: record payment
+    recordRunPayment(run.toObject() as Parameters<typeof recordRunPayment>[0]).catch(() => {});
 
     const doc = run.toObject() as { _id: { toString(): string }; [k: string]: unknown };
     return json({ run: { ...sanitizeRunForResponse(doc), _id: doc._id.toString() } });

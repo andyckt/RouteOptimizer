@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { verifyAdminSessionEdge, SESSION_COOKIE_NAME } from "@/lib/auth/adminSessionEdge";
 
-const ADMIN_PAGES = ["/dashboard", "/edit-run", "/run-details", "/create-run"];
+const ADMIN_PAGES = ["/dashboard", "/edit-run", "/run-details", "/create-run", "/drivers", "/driver-payments"];
 
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
@@ -38,5 +38,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/login", "/dashboard", "/edit-run", "/run-details", "/create-run"],
+  matcher: ["/", "/login", "/dashboard", "/edit-run", "/run-details", "/create-run", "/drivers", "/driver-payments"],
 };
