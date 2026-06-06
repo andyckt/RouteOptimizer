@@ -175,6 +175,278 @@ export function buildDriverTabRows(
 // Sheet write (requires googleapis)
 // ---------------------------------------------------------------------------
 
+async function applySheetFormatting(
+  sheets: any,
+  spreadsheetId: string,
+  sheetId: number,
+  rows: SheetRow[]
+): Promise<void> {
+  const requests: any[] = [];
+  const dataRowCount = rows.length;
+
+  // 1. Freeze header row
+  requests.push({
+    updateSheetProperties: {
+      properties: {
+        sheetId,
+        gridProperties: { frozenRowCount: 1 },
+      },
+      fields: "gridProperties.frozenRowCount",
+    },
+  });
+
+  // 2. Set column widths for better readability
+  const columnWidths = [
+    { index: 0, width: 140 }, // Week
+    { index: 1, width: 110 }, // Date
+    { index: 2, width: 90 },  // Time
+    { index: 3, width: 110 }, // Hourly Rate
+    { index: 4, width: 100 }, // Subtotal
+    { index: 5, width: 130 }, // Total Distance
+    { index: 6, width: 150 }, // Fuel Coverage
+    { index: 7, width: 100 }, // Total
+    { index: 8, width: 200 }, // Note
+  ];
+
+  for (const col of columnWidths) {
+    requests.push({
+      updateDimensionProperties: {
+        range: {
+          sheetId,
+          dimension: "COLUMNS",
+          startIndex: col.index,
+          endIndex: col.index + 1,
+        },
+        properties: { pixelSize: col.width },
+        fields: "pixelSize",
+      },
+    });
+  }
+
+  // 3. Format header row (row 0) - bold, background color, center align
+  requests.push({
+    repeatCell: {
+      range: {
+        sheetId,
+        startRowIndex: 0,
+        endRowIndex: 1,
+        startColumnIndex: 0,
+        endColumnIndex: 9,
+      },
+      cell: {
+        userEnteredFormat: {
+          backgroundColor: { red: 0.2, green: 0.47, blue: 0.8 }, // Blue
+          textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 } },
+          horizontalAlignment: "CENTER",
+          verticalAlignment: "MIDDLE",
+        },
+      },
+      fields: "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)",
+    },
+  });
+
+  // 4. Format currency columns (E, G, H = indices 4, 6, 7) - Subtotal, Fuel Coverage, Total
+  for (const colIndex of [4, 6, 7]) {
+    requests.push({
+      repeatCell: {
+        range: {
+          sheetId,
+          startRowIndex: 1,
+          endRowIndex: dataRowCount + 1,
+          startColumnIndex: colIndex,
+          endColumnIndex: colIndex + 1,
+        },
+        cell: {
+          userEnteredFormat: {
+            numberFormat: { type: "CURRENCY", pattern: "$#,##0.00" },
+          },
+        },
+        fields: "userEnteredFormat.numberFormat",
+      },
+    });
+  }
+
+  // 5. Format time column (C = index 2) - 4 decimal places
+  requests.push({
+    repeatCell: {
+      range: {
+        sheetId,
+        startRowIndex: 1,
+        endRowIndex: dataRowCount + 1,
+        startColumnIndex: 2,
+        endColumnIndex: 3,
+      },
+      cell: {
+        userEnteredFormat: {
+          numberFormat: { type: "NUMBER", pattern: "0.0000" },
+        },
+      },
+      fields: "userEnteredFormat.numberFormat",
+    },
+  });
+
+  // 6. Format hourly rate column (D = index 3) - currency
+  requests.push({
+    repeatCell: {
+      range: {
+        sheetId,
+        startRowIndex: 1,
+        endRowIndex: dataRowCount + 1,
+        startColumnIndex: 3,
+        endColumnIndex: 4,
+      },
+      cell: {
+        userEnteredFormat: {
+          numberFormat: { type: "CURRENCY", pattern: "$#,##0.00" },
+        },
+      },
+      fields: "userEnteredFormat.numberFormat",
+    },
+  });
+
+  // 7. Format distance column (F = index 5) - 2 decimal places
+  requests.push({
+    repeatCell: {
+      range: {
+        sheetId,
+        startRowIndex: 1,
+        endRowIndex: dataRowCount + 1,
+        startColumnIndex: 5,
+        endColumnIndex: 6,
+      },
+      cell: {
+        userEnteredFormat: {
+          numberFormat: { type: "NUMBER", pattern: "#,##0.00" },
+        },
+      },
+      fields: "userEnteredFormat.numberFormat",
+    },
+  });
+
+  // 8. Add borders to all data cells
+  requests.push({
+    updateBorders: {
+      range: {
+        sheetId,
+        startRowIndex: 0,
+        endRowIndex: dataRowCount + 1,
+        startColumnIndex: 0,
+        endColumnIndex: 9,
+      },
+      top: { style: "SOLID", width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+      bottom: { style: "SOLID", width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+      left: { style: "SOLID", width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+      right: { style: "SOLID", width: 1, color: { red: 0.8, green: 0.8, blue: 0.8 } },
+      innerHorizontal: { style: "SOLID", width: 1, color: { red: 0.9, green: 0.9, blue: 0.9 } },
+      innerVertical: { style: "SOLID", width: 1, color: { red: 0.9, green: 0.9, blue: 0.9 } },
+    },
+  });
+
+  // 9. Format summary rows (deposit and payable totals)
+  rows.forEach((row, index) => {
+    const rowIndex = index + 1; // +1 because row 0 is header
+    const isDepositSummary = row.date === "" && row.week.includes("(Deposit)");
+    const isPayableSummary = row.date === "" && row.note?.includes("Payable");
+
+    if (isDepositSummary) {
+      // Deposit summary: yellow background, bold, italic
+      requests.push({
+        repeatCell: {
+          range: {
+            sheetId,
+            startRowIndex: rowIndex,
+            endRowIndex: rowIndex + 1,
+            startColumnIndex: 0,
+            endColumnIndex: 9,
+          },
+          cell: {
+            userEnteredFormat: {
+              backgroundColor: { red: 1, green: 0.95, blue: 0.8 }, // Light orange
+              textFormat: { bold: true, italic: true },
+            },
+          },
+          fields: "userEnteredFormat(backgroundColor,textFormat)",
+        },
+      });
+    } else if (isPayableSummary) {
+      // Payable summary: green background, bold
+      requests.push({
+        repeatCell: {
+          range: {
+            sheetId,
+            startRowIndex: rowIndex,
+            endRowIndex: rowIndex + 1,
+            startColumnIndex: 0,
+            endColumnIndex: 9,
+          },
+          cell: {
+            userEnteredFormat: {
+              backgroundColor: { red: 0.85, green: 0.95, blue: 0.85 }, // Light green
+              textFormat: { bold: true },
+            },
+          },
+          fields: "userEnteredFormat(backgroundColor,textFormat)",
+        },
+      });
+    }
+  });
+
+  // 10. Alternate row colors for regular data rows (not summaries)
+  rows.forEach((row, index) => {
+    const rowIndex = index + 1;
+    const isSummary = row.date === "";
+    const isSaturday = !isSummary && row.date && new Date(`${row.date}T00:00:00`).getDay() === 6;
+
+    if (!isSummary && index % 2 === 0) {
+      // Zebra striping for even rows
+      requests.push({
+        repeatCell: {
+          range: {
+            sheetId,
+            startRowIndex: rowIndex,
+            endRowIndex: rowIndex + 1,
+            startColumnIndex: 0,
+            endColumnIndex: 9,
+          },
+          cell: {
+            userEnteredFormat: {
+              backgroundColor: { red: 0.97, green: 0.97, blue: 0.97 }, // Very light gray
+            },
+          },
+          fields: "userEnteredFormat.backgroundColor",
+        },
+      });
+    }
+
+    if (isSaturday) {
+      // Saturday rows: slightly different color to indicate no work day
+      requests.push({
+        repeatCell: {
+          range: {
+            sheetId,
+            startRowIndex: rowIndex,
+            endRowIndex: rowIndex + 1,
+            startColumnIndex: 0,
+            endColumnIndex: 9,
+          },
+          cell: {
+            userEnteredFormat: {
+              backgroundColor: { red: 0.95, green: 0.95, blue: 1 }, // Very light blue
+              textFormat: { italic: true },
+            },
+          },
+          fields: "userEnteredFormat(backgroundColor,textFormat)",
+        },
+      });
+    }
+  });
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: { requests },
+  });
+}
+
 function rowToValues(row: SheetRow): (string | number)[] {
   return [
     row.week,
@@ -267,6 +539,11 @@ export async function rebuildDriverTab(driver: Driver): Promise<void> {
       valueInputOption: "RAW",
       requestBody: { values },
     });
+
+    // Apply formatting
+    if (sheetId !== undefined) {
+      await applySheetFormatting(sheets, spreadsheetId, sheetId, rows);
+    }
 
     // Mark all records succeeded
     await DriverPaymentRecordModel.updateMany(
