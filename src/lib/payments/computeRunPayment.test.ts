@@ -256,4 +256,60 @@ describe("computeRunPayment", () => {
     assert.equal(result.hourly_rate_snapshot, 22);
     assert.equal(result.fuel_rate_snapshot, 0.15);
   });
+
+  it("applies 2-hour minimum when actual hours < 2", () => {
+    // 1.5 hours actual → becomes 2 hours effective
+    const run = {
+      ...baseRun,
+      actual_start_time: "2026-05-31T14:00:00.000Z",
+      optimized_route: {
+        stops: [{ completed_at: "2026-05-31T15:30:00.000Z" }],
+        total_distance_km: 10,
+        return_distance_km: 0,
+      },
+    };
+    const result = computeRunPayment({ runId: "r", run, driver: baseDriver });
+    assert.equal(result.hours_actual, 1.5);
+    assert.equal(result.hours_effective, 2);
+    // subtotal = 2 * 22 = 44
+    assert.equal(result.subtotal_labor, 44);
+  });
+
+  it("applies 2-hour minimum when override < 2", () => {
+    const result = computeRunPayment({
+      runId: "r",
+      run: baseRun,
+      driver: baseDriver,
+      hoursOverride: 1.2,
+      overrideReason: "short run",
+    });
+    assert.equal(result.hours_override, 1.2);
+    assert.equal(result.hours_effective, 2);
+    assert.equal(result.subtotal_labor, 44);
+  });
+
+  it("does not apply minimum when hours >= 2", () => {
+    // 3 hours → stays 3
+    const run = {
+      ...baseRun,
+      actual_start_time: "2026-05-31T14:00:00.000Z",
+      optimized_route: {
+        stops: [{ completed_at: "2026-05-31T17:00:00.000Z" }],
+        total_distance_km: 10,
+        return_distance_km: 0,
+      },
+    };
+    const result = computeRunPayment({ runId: "r", run, driver: baseDriver });
+    assert.equal(result.hours_actual, 3);
+    assert.equal(result.hours_effective, 3);
+    assert.equal(result.subtotal_labor, Math.round(3 * 22 * 100) / 100);
+  });
+
+  it("does not apply minimum when hours are 0 (missing data)", () => {
+    // No hours data → stays 0, triggers needs_review
+    const run = { ...baseRun, actual_start_time: null, optimized_route: { stops: [] } };
+    const result = computeRunPayment({ runId: "r", run, driver: baseDriver });
+    assert.equal(result.hours_effective, 0);
+    assert.equal(result.status, "needs_review");
+  });
 });

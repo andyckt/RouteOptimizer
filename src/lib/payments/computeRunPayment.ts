@@ -168,7 +168,9 @@ export function computeRunPayment(input: ComputeRunPaymentInput): ComputedPaymen
 
   const hours_actual = deriveActualHours(run);
   const hours_override = typeof hoursOverride === "number" ? hoursOverride : null;
-  const hours_effective = round2(hours_override ?? hours_actual ?? 0);
+  // Apply 2-hour minimum guarantee for drivers (only when hours > 0)
+  const rawHours = hours_override ?? hours_actual ?? 0;
+  const hours_effective = round2(rawHours > 0 ? Math.max(2, rawHours) : 0);
 
   // Distance
   const total_distance_km = run.optimized_route?.total_distance_km ?? 0;

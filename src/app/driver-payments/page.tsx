@@ -79,6 +79,10 @@ export default function DriverPaymentsPage() {
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [assigningName, setAssigningName] = useState<string | null>(null);
   const [assignDriverId, setAssignDriverId] = useState("");
+  const [backfillStartDate, setBackfillStartDate] = useState("");
+  const [backfillEndDate, setBackfillEndDate] = useState("");
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -162,6 +166,31 @@ export default function DriverPaymentsPage() {
     await load();
   }
 
+  async function handleBackfill() {
+    if (!backfillStartDate || !backfillEndDate) {
+      setBackfillMsg("Both start and end dates are required");
+      return;
+    }
+    setBackfilling(true);
+    setBackfillMsg(null);
+    try {
+      const res = await fetch(`/api/driver-payments/backfill?start_date=${backfillStartDate}&end_date=${backfillEndDate}`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setBackfillMsg(`Error: ${data.error ?? "Backfill failed"}`);
+      } else {
+        setBackfillMsg(`Backfill complete: ${data.processed} run(s) processed (${data.failed} failed). Click "Rebuild All Sheets" to sync.`);
+        await load();
+      }
+    } catch (e) {
+      setBackfillMsg(e instanceof Error ? e.message : "Backfill failed");
+    } finally {
+      setBackfilling(false);
+    }
+  }
+
   const activeRollup = rollups.find(r => r.driver_id === activeDriverId) ?? rollups[0] ?? null;
 
   return (
@@ -186,6 +215,53 @@ export default function DriverPaymentsPage() {
           {syncMsg}
         </div>
       )}
+
+      {/* Backfill section */}
+      <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 6, padding: "14px 16px", marginBottom: 16 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10, color: "#1e40af" }}>Backfill Payment Records from Old Runs</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <label style={{ fontSize: 13, color: "#374151" }}>
+            Start date:
+            <input
+              type="date"
+              value={backfillStartDate}
+              onChange={e => setBackfillStartDate(e.target.value)}
+              style={{ marginLeft: 6, border: "1px solid #d1d5db", borderRadius: 4, padding: "5px 8px", fontSize: 13 }}
+            />
+          </label>
+          <label style={{ fontSize: 13, color: "#374151" }}>
+            End date:
+            <input
+              type="date"
+              value={backfillEndDate}
+              onChange={e => setBackfillEndDate(e.target.value)}
+              style={{ marginLeft: 6, border: "1px solid #d1d5db", borderRadius: 4, padding: "5px 8px", fontSize: 13 }}
+            />
+          </label>
+          <button
+            onClick={handleBackfill}
+            disabled={backfilling || !backfillStartDate || !backfillEndDate}
+            style={{
+              background: "#2563eb",
+              color: "#fff",
+              border: "none",
+              borderRadius: 6,
+              padding: "7px 16px",
+              cursor: backfilling || !backfillStartDate || !backfillEndDate ? "not-allowed" : "pointer",
+              fontWeight: 600,
+              fontSize: 13,
+              opacity: backfilling || !backfillStartDate || !backfillEndDate ? 0.6 : 1,
+            }}
+          >
+            {backfilling ? "Backfilling…" : "Backfill Payments"}
+          </button>
+        </div>
+        {backfillMsg && (
+          <div style={{ marginTop: 10, fontSize: 13, color: backfillMsg.startsWith("Error") ? "#dc2626" : "#166534" }}>
+            {backfillMsg}
+          </div>
+        )}
+      </div>
 
       {loading && <p style={{ color: "#6b7280" }}>Loading…</p>}
       {error && <p style={{ color: "#dc2626" }}>{error}</p>}
