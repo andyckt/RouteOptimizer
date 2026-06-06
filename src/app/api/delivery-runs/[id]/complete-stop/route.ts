@@ -11,6 +11,7 @@ import { getServerEnv } from "@/lib/env";
 import { toE164NorthAmerica } from "@/lib/phone/e164";
 import type { OptimizedStop } from "@/types/delivery-run";
 import { isSyntheticStop } from "@/lib/stops/synthetic";
+import { recordRunPayment } from "@/lib/payments/recordRunPayment";
 
 const DELIVERED_SMS = "您好，今天的餐食已送达，您可在订单详情中查看送达照片喔~";
 
@@ -65,6 +66,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
 
     await run.save();
+
+    // Non-blocking: record payment when run becomes completed
+    if (allStopsCompleted) {
+      recordRunPayment(run.toObject() as Parameters<typeof recordRunPayment>[0]).catch(() => {});
+    }
 
     // Send "delivered" SMS to customer (skip synthetic/handoff stops)
     const { OPENPHONE_FROM } = getServerEnv();

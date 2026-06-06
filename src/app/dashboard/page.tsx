@@ -254,6 +254,18 @@ export default function DashboardPage() {
               >
                 Create New Run
               </Link>
+              <Link
+                href="/driver-payments"
+                className="min-h-[44px] px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 transition-colors flex items-center justify-center text-sm"
+              >
+                Payment Reports
+              </Link>
+              <Link
+                href="/drivers"
+                className="min-h-[44px] px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 transition-colors flex items-center justify-center text-sm"
+              >
+                Drivers
+              </Link>
               <button
                 type="button"
                 onClick={async () => {

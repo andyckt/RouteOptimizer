@@ -14,6 +14,7 @@ import { toE164NorthAmerica } from "@/lib/phone/e164";
 import type { KapiooSyncState, OptimizedStop } from "@/types/delivery-run";
 import { runKapiooSync } from "@/lib/kapioo/sync";
 import { isSyntheticStop } from "@/lib/stops/synthetic";
+import { recordRunPayment } from "@/lib/payments/recordRunPayment";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -213,6 +214,11 @@ export async function POST(req: NextRequest, { params }: Params) {
         { _id: id },
         { $set: { status: "completed" } }
       );
+      // Non-blocking: record payment now that run is fully completed
+      const completedRun = await DeliveryRunModel.findById(id).lean();
+      if (completedRun) {
+        recordRunPayment(completedRun as unknown as Parameters<typeof recordRunPayment>[0]).catch(() => {});
+      }
     }
 
     const stopAfter = routeAfter?.stops?.[stopIndex] as OptimizedStop | undefined;
