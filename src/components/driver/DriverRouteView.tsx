@@ -346,6 +346,8 @@ export function DriverRouteView({
             const isNextStop = i === nextStopIndex;
             const isStandaloneMeetupPoint = isSyntheticStop(stop);
             const isCustomerMeetupStop = !isStandaloneMeetupPoint && Boolean(stop.meetup_note);
+            const boxCount =
+              typeof stop.box_count === "number" && stop.box_count > 0 ? stop.box_count : null;
 
             if (isCompleted && !isExpanded) {
               return (
@@ -363,6 +365,11 @@ export function DriverRouteView({
                     </div>
                     <div className="flex-1 min-w-0">
                       <span className="block font-semibold text-slate-900 truncate">{stop.customer_name}</span>
+                      {boxCount !== null && (
+                        <span className="inline-flex mt-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-800 border border-orange-200">
+                          {boxCount} 盒
+                        </span>
+                      )}
                       {isStandaloneMeetupPoint && (
                         <span className="inline-block mt-0.5">
                           <HandoffBadge />
@@ -430,6 +437,11 @@ export function DriverRouteView({
                         <span className="text-base font-semibold text-slate-900">{stop.customer_name}</span>
                         {isStandaloneMeetupPoint && <HandoffBadge />}
                         {isCustomerMeetupStop && <MeetupBadge />}
+                        {boxCount !== null && (
+                          <span className="px-3 py-1 rounded-full text-sm font-bold bg-orange-100 text-orange-800 border border-orange-200">
+                            Meal boxes: {boxCount} 盒
+                          </span>
+                        )}
                         {stop.completed && (
                           <>
                             <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">

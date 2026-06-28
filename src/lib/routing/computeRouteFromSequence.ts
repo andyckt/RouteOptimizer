@@ -183,6 +183,9 @@ export async function computeOptimizedRouteFromSequence(
       nearby_location_reference: routing.nearbyRef,
       completed: false,
       ...(resolvedOrderIds ? { order_ids: resolvedOrderIds } : {}),
+      ...(typeof customer.box_count === "number" && Number.isFinite(customer.box_count)
+        ? { box_count: customer.box_count }
+        : {}),
       ...(resolvedMeetupNote ? { meetup_note: resolvedMeetupNote } : {}),
       ...(customer.is_synthetic !== undefined
         ? { is_synthetic: customer.is_synthetic }

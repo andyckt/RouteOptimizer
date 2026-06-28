@@ -25,6 +25,7 @@ const customerSchema = new Schema<DeliveryCustomer>(
     fixed_stop_position: { type: Number, default: null },
     // Create-time seed only. Sync/retry reads OptimizedStop.order_ids, never this.
     order_ids: { type: [String], default: undefined },
+    box_count: { type: Number },
     is_synthetic: { type: Boolean },
     stop_type: { type: String, enum: ["customer", "handoff"] },
     meetup_note: { type: String },
@@ -74,6 +75,7 @@ const optimizedStopSchema = new Schema(
     sms_sent_at: { type: String },
     // SSOT for Kapioo Admin sync.
     order_ids: { type: [String], default: undefined },
+    box_count: { type: Number },
     kapioo_sync: { type: kapiooSyncSchema, default: undefined },
     kapioo_delivery_started_sync: { type: kapiooSyncSchema, default: undefined },
     is_synthetic: { type: Boolean },

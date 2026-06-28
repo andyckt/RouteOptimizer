@@ -1933,6 +1933,11 @@ function OptimizedStopCard({
                 <p className="font-semibold text-slate-900">{stop.customer_name}</p>
                 {isSyntheticStop(stop) && <HandoffBadge />}
                 {stop.meetup_note && <MeetupBadge />}
+                {typeof stop.box_count === "number" && stop.box_count > 0 && (
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-800">
+                    {stop.box_count} 盒
+                  </span>
+                )}
                 {stop.completed && (
                   <>
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">

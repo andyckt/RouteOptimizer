@@ -32,6 +32,8 @@ export interface DeliveryCustomer {
    * and is the only field read at sync/retry time. Do NOT read this at sync time.
    */
   order_ids?: string[];
+  /** Number of meal boxes for the customer's Kapioo order IDs. */
+  box_count?: number;
   /**
    * True for synthetic operational stops (e.g. meet-up handoff). Effective default `false`
    * is applied in code, not the schema.
@@ -99,6 +101,8 @@ export interface OptimizedStop {
    * Empty/undefined means this stop is intentionally not a Kapioo order.
    */
   order_ids?: string[];
+  /** Number of meal boxes the driver should deliver at this stop. */
+  box_count?: number;
   /** Last Kapioo Admin POD sync outcome (admin-side surface only). */
   kapioo_sync?: KapiooSyncState;
   /** Kapioo Admin delivery-started sync (Start Delivery). Separate from POD. */

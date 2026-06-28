@@ -12,6 +12,7 @@ import {
   sanitizeRunForResponse,
 } from "@/lib/normalization/delivery-run";
 import { requireAdminSession } from "@/lib/auth/requireAdmin";
+import { enrichCustomersWithBoxCounts } from "@/lib/kapioo/order-box-counts";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -64,6 +65,8 @@ export async function POST(request: NextRequest, { params }: Params) {
         nc.geocode_error = `Could not geocode: ${addr}`;
       }
     }
+
+    await enrichCustomersWithBoxCounts(newCustomers);
 
     await connectDB();
     const run = await DeliveryRunModel.findById(id);

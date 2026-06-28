@@ -41,6 +41,7 @@ export type KapiooPostReasonHint =
 export interface KapiooPostResult {
   ok: boolean;
   status: number;
+  data?: unknown;
   updated?: string[];
   skipped?: string[];
   missing?: string[];
@@ -51,6 +52,8 @@ export interface KapiooPostResult {
 export const KAPIOO_POD_PATH = "/api/integrations/route-optimizer/proof-of-delivery";
 export const KAPIOO_DELIVERY_STARTED_PATH =
   "/api/integrations/route-optimizer/delivery-started";
+export const KAPIOO_ORDER_BOX_COUNTS_PATH =
+  "/api/integrations/route-optimizer/order-box-counts";
 
 const DEFAULT_TIMEOUT_MS = 5000;
 
@@ -78,6 +81,34 @@ function pickErrorMessage(parsed: unknown, fallback: string): string {
     if (typeof rec.message === "string" && rec.message.trim()) return rec.message;
   }
   return fallback;
+}
+
+function pickResponseData(parsed: unknown): unknown {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  const rec = parsed as Record<string, unknown>;
+  return "data" in rec ? rec.data : parsed;
+}
+
+function pickSuccessfulStringArray(parsed: unknown, field: "updated" | "skipped" | "missing") {
+  const data = pickResponseData(parsed);
+  if (data && typeof data === "object") {
+    return pickStringArray((data as Record<string, unknown>)[field]);
+  }
+  return undefined;
+}
+
+function parseBoxCountsResponse(data: unknown): Record<string, number> | null {
+  if (!data || typeof data !== "object") return null;
+  const counts = (data as Record<string, unknown>).counts;
+  if (!counts || typeof counts !== "object" || Array.isArray(counts)) return null;
+
+  const out: Record<string, number> = {};
+  for (const [orderId, count] of Object.entries(counts)) {
+    if (typeof count === "number" && Number.isFinite(count)) {
+      out[orderId] = count;
+    }
+  }
+  return out;
 }
 
 /**
@@ -123,21 +154,14 @@ export async function postSignedKapiooJson(
     }
 
     if (res.ok) {
+      const data = pickResponseData(parsed);
       return {
         ok: true,
         status: res.status,
-        updated:
-          parsed && typeof parsed === "object"
-            ? pickStringArray((parsed as Record<string, unknown>).updated)
-            : undefined,
-        skipped:
-          parsed && typeof parsed === "object"
-            ? pickStringArray((parsed as Record<string, unknown>).skipped)
-            : undefined,
-        missing:
-          parsed && typeof parsed === "object"
-            ? pickStringArray((parsed as Record<string, unknown>).missing)
-            : undefined,
+        data,
+        updated: pickSuccessfulStringArray(parsed, "updated"),
+        skipped: pickSuccessfulStringArray(parsed, "skipped"),
+        missing: pickSuccessfulStringArray(parsed, "missing"),
       };
     }
 
@@ -183,4 +207,22 @@ export async function postDeliveryStartedToKapiooAdmin(
   options?: { timeoutMs?: number; signal?: AbortSignal }
 ): Promise<KapiooPostResult> {
   return postSignedKapiooJson(config, KAPIOO_DELIVERY_STARTED_PATH, payload, options);
+}
+
+export async function fetchOrderBoxCounts(
+  config: KapiooAdminConfig | null,
+  orderIds: string[],
+  options?: { timeoutMs?: number; signal?: AbortSignal }
+): Promise<Record<string, number> | null> {
+  if (!config || orderIds.length === 0) return null;
+
+  const result = await postSignedKapiooJson(
+    config,
+    KAPIOO_ORDER_BOX_COUNTS_PATH,
+    { orderIds },
+    options
+  );
+  if (!result.ok) return null;
+
+  return parseBoxCountsResponse(result.data);
 }

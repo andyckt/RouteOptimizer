@@ -6,6 +6,7 @@ import { badRequest } from "@/lib/http/errors";
 import type { DeliveryCustomer } from "@/types/delivery-run";
 import { sanitizeCustomers } from "@/lib/normalization/delivery-run";
 import { requireAdminSession } from "@/lib/auth/requireAdmin";
+import { enrichCustomersWithBoxCounts } from "@/lib/kapioo/order-box-counts";
 
 function toDeliveryCustomer(
   p: { name: string; address: string; phone: string; notes: string; order_ids?: string[] }
@@ -52,6 +53,8 @@ export async function POST(request: NextRequest) {
         c.geocode_error = `Could not geocode: ${addr}`;
       }
     }
+
+    await enrichCustomersWithBoxCounts(customers);
 
     return json({
       customers: sanitizeCustomers(customers),

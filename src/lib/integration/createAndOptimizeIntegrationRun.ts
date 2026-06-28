@@ -33,6 +33,7 @@ import {
   logGoogleApiCostEstimate,
   GOOGLE_API_BUDGET_EXCEEDED_CODE,
 } from "@/lib/integration/googleApiBudget";
+import { enrichCustomersWithBoxCounts } from "@/lib/kapioo/order-box-counts";
 
 export type CreateAndOptimizeItemStatus = "success" | "replayed" | "failed";
 
@@ -95,7 +96,7 @@ export async function createAndOptimizeIntegrationRun(
 ): Promise<CreateAndOptimizeRunResult> {
   const { origin } = opts;
   const parsed = parseIntegrationRunPayload(body);
-  const { errors, warnings, run, meta, normalizedCustomers } = parsed;
+  const { errors, warnings, run, meta } = parsed;
   const driverName = run?.driver_name ?? "";
 
   if (errors.length > 0 || !run || !parsed.sanitizedCustomers) {
@@ -195,9 +196,12 @@ export async function createAndOptimizeIntegrationRun(
     idempotency_key,
   });
 
+  const customersForCreate = parsed.sanitizedCustomers;
+  await enrichCustomersWithBoxCounts(customersForCreate);
+
   const created = await createDeliveryRunFromPayload({
     ...run,
-    customers: normalizedCustomers,
+    customers: customersForCreate,
     planning_session_id,
     external_id,
     idempotency_key,
