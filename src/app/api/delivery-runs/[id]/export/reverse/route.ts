@@ -7,6 +7,7 @@ import { handleApiError } from "@/lib/http/response";
 import { badRequest, notFound } from "@/lib/http/errors";
 import type { OptimizedStop } from "@/types/delivery-run";
 import { requireAdminSession } from "@/lib/auth/requireAdmin";
+import { isSyntheticStop } from "@/lib/stops/synthetic";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -25,7 +26,10 @@ export async function GET(req: NextRequest, { params }: Params) {
     if (!run) throw notFound("Delivery run not found");
 
     const route = run.optimized_route;
-    const stops = [...(route?.stops ?? [])].reverse();
+    // Exclude standalone meet-up points; customer stops with a meet-up note are kept.
+    const stops = [...(route?.stops ?? [])]
+      .filter((s) => !isSyntheticStop(s))
+      .reverse();
     if (stops.length === 0) {
       throw badRequest("No optimized route to export");
     }

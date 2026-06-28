@@ -568,7 +568,12 @@ function RunDetailsContent() {
     setCopyingReverse(true);
     try {
       const stops = [...run.optimized_route.stops].reverse();
-      const names = stops.map((s) => s.customer_name ?? "").filter(Boolean);
+      // Exclude standalone meet-up points (not customer deliveries);
+      // keep customer stops that also have a meet-up note.
+      const names = stops
+        .filter((s) => !isSyntheticStop(s))
+        .map((s) => s.customer_name ?? "")
+        .filter(Boolean);
       const ok = await copyToClipboard(names.join("\n"));
       if (!ok) throw new Error("Could not copy to clipboard");
     } catch (err) {
