@@ -33,6 +33,12 @@ export function normalizeOrderIds(value: unknown): string[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
+export function normalizeMeetupNote(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 export function sanitizeCustomer(
   customer: DeliveryCustomer | UnknownRecord
 ): DeliveryCustomer {
@@ -45,6 +51,12 @@ export function sanitizeCustomer(
     delete base.order_ids;
   } else {
     base.order_ids = cleanedIds;
+  }
+  const cleanedMeetupNote = normalizeMeetupNote(base.meetup_note);
+  if (cleanedMeetupNote === undefined) {
+    delete base.meetup_note;
+  } else {
+    base.meetup_note = cleanedMeetupNote;
   }
   return base as unknown as DeliveryCustomer;
 }
@@ -63,6 +75,14 @@ export function sanitizeStop(stop: OptimizedStop | UnknownRecord): OptimizedStop
       delete base.order_ids;
     } else {
       base.order_ids = cleanedIds;
+    }
+  }
+  if ("meetup_note" in base) {
+    const cleanedMeetupNote = normalizeMeetupNote(base.meetup_note);
+    if (cleanedMeetupNote === undefined) {
+      delete base.meetup_note;
+    } else {
+      base.meetup_note = cleanedMeetupNote;
     }
   }
   return base as unknown as OptimizedStop;

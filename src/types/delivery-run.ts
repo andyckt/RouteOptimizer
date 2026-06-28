@@ -39,6 +39,8 @@ export interface DeliveryCustomer {
   is_synthetic?: boolean;
   /** Effective default `"customer"` is applied in code, not the schema. */
   stop_type?: StopType;
+  /** Optional meet-up instruction shown prominently to the driver. */
+  meetup_note?: string;
   /** Service time at stop in minutes. Effective default `5` is applied in code, not the schema. */
   service_time_minutes?: number;
 }
@@ -105,6 +107,8 @@ export interface OptimizedStop {
   is_synthetic?: boolean;
   /** Copied from customer on optimize. Effective default `"customer"` is applied in code, not the schema. */
   stop_type?: StopType;
+  /** Stop-level source of truth for meet-up instructions after optimization. */
+  meetup_note?: string;
   /** Copied from customer on optimize. Effective default `5` is applied in code, not the schema. */
   service_time_minutes?: number;
 }

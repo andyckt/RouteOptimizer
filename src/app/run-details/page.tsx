@@ -31,6 +31,7 @@ import {
 import { BroadcastSmsModal, BROADCAST_SMS_MAX_CHARS } from "@/components/runs/BroadcastSmsModal";
 import { RunIntegrationMetadata } from "@/components/runs/RunIntegrationMetadata";
 import { HandoffBadge } from "@/components/stops/HandoffBadge";
+import { MeetupBadge } from "@/components/stops/MeetupBadge";
 import { isSyntheticStop } from "@/lib/stops/synthetic";
 
 const RouteMap = dynamic(
@@ -230,7 +231,13 @@ function ExportLabelsModal({
   onClose: () => void;
   exporting: boolean;
 }) {
-  const routeTotal = stops.reduce((sum, _, i) => sum + Math.max(0, labelQuantities[i] ?? 2), 0);
+  const customerStopEntries = stops
+    .map((stop, index) => ({ stop, index }))
+    .filter(({ stop }) => !isSyntheticStop(stop));
+  const routeTotal = customerStopEntries.reduce(
+    (sum, { index }) => sum + Math.max(0, labelQuantities[index] ?? 2),
+    0
+  );
   const extrasTotal = extraCustomers.reduce((sum, ec) => sum + Math.max(0, ec.quantity), 0);
   const totalLabels = routeTotal + extrasTotal;
 
@@ -272,9 +279,9 @@ function ExportLabelsModal({
 
           <h3 className="font-semibold text-sm text-slate-900 mb-2">Customers from this Route</h3>
           <div className="space-y-3 mb-6 max-h-48 overflow-y-auto">
-            {stops.map((stop, i) => (
+            {customerStopEntries.map(({ stop, index }) => (
               <div
-                key={i}
+                key={index}
                 className="p-3 border border-slate-200 rounded-xl bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
               >
                 <div className="min-w-0 flex-1">
@@ -289,12 +296,12 @@ function ExportLabelsModal({
                     type="number"
                     min={0}
                     max={99}
-                    value={labelQuantities[i] ?? 2}
+                    value={labelQuantities[index] ?? 2}
                     onChange={(e) => {
                       const v = parseInt(e.target.value, 10);
                       setLabelQuantities({
                         ...labelQuantities,
-                        [i]: isNaN(v) ? 0 : Math.max(0, Math.min(99, v)),
+                        [index]: isNaN(v) ? 0 : Math.max(0, Math.min(99, v)),
                       });
                     }}
                     className="w-16 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
@@ -579,6 +586,8 @@ function RunDetailsContent() {
       notes?: string;
       /** SSOT for Kapioo sync. Writes only to the stop; never propagates to customer. */
       order_ids?: string[];
+      /** SSOT for driver meet-up highlighting after optimization. */
+      meetup_note?: string;
     }
   ) {
     if (!id || !run?.optimized_route?.stops) return;
@@ -601,6 +610,9 @@ function RunDetailsContent() {
               ...(updates.order_ids !== undefined
                 ? { order_ids: updates.order_ids.length > 0 ? updates.order_ids : undefined }
                 : {}),
+              ...(updates.meetup_note !== undefined
+                ? { meetup_note: updates.meetup_note.trim() || undefined }
+                : {}),
             }
           : s
       );
@@ -611,7 +623,7 @@ function RunDetailsContent() {
               name: updates.customer_name ?? c.name,
               phone: updates.customer_phone ?? c.phone,
               notes: updates.notes !== undefined ? updates.notes : c.notes,
-              // intentionally NOT writing order_ids to the customer record.
+              // intentionally NOT writing stop-level SSOT fields (order_ids/meetup_note) to the customer record.
             }
           : c
       );
@@ -1752,6 +1764,7 @@ function OptimizedStopCard({
     customer_phone: string;
     notes?: string;
     order_ids?: string[];
+    meetup_note?: string;
   }) => void;
   onCancel?: () => void;
   onRetryKapiooSync?: () => void;
@@ -1761,6 +1774,7 @@ function OptimizedStopCard({
   const [draftPhone, setDraftPhone] = useState(stop.customer_phone ?? "");
   const [draftNotes, setDraftNotes] = useState(stop.notes ?? "");
   const [draftOrderIds, setDraftOrderIds] = useState((stop.order_ids ?? []).join(", "));
+  const [draftMeetupNote, setDraftMeetupNote] = useState(stop.meetup_note ?? "");
 
   useEffect(() => {
     if (isEditing) {
@@ -1768,8 +1782,9 @@ function OptimizedStopCard({
       setDraftPhone(stop.customer_phone ?? "");
       setDraftNotes(stop.notes ?? "");
       setDraftOrderIds((stop.order_ids ?? []).join(", "));
+      setDraftMeetupNote(stop.meetup_note ?? "");
     }
-  }, [isEditing, stop.customer_name, stop.customer_phone, stop.notes, stop.order_ids]);
+  }, [isEditing, stop.customer_name, stop.customer_phone, stop.notes, stop.order_ids, stop.meetup_note]);
 
   const hasEditHandlers = onEdit && onDone && onCancel && typeof stopIndex === "number";
 
@@ -1780,6 +1795,7 @@ function OptimizedStopCard({
       customer_phone: draftPhone.trim(),
       notes: draftNotes.trim() || undefined,
       order_ids: parseOrderIdsInput(draftOrderIds),
+      meetup_note: draftMeetupNote.trim() || undefined,
     });
   }
 
@@ -1858,6 +1874,18 @@ function OptimizedStopCard({
                 />
               </div>
               <div>
+                <label className="block text-xs font-medium text-violet-700 mb-0.5">
+                  Meet-up note
+                </label>
+                <input
+                  type="text"
+                  value={draftMeetupNote}
+                  onChange={(e) => setDraftMeetupNote(e.target.value)}
+                  className="w-full border border-violet-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                  placeholder="Meet driver name/phone..."
+                />
+              </div>
+              <div>
                 <label
                   htmlFor={`order-ids-${stopIndex ?? "x"}`}
                   className="block text-xs font-medium text-slate-600 mb-0.5"
@@ -1899,6 +1927,7 @@ function OptimizedStopCard({
               <div className="flex items-center gap-2 flex-wrap">
                 <p className="font-semibold text-slate-900">{stop.customer_name}</p>
                 {isSyntheticStop(stop) && <HandoffBadge />}
+                {stop.meetup_note && <MeetupBadge />}
                 {stop.completed && (
                   <>
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
@@ -1938,6 +1967,14 @@ function OptimizedStopCard({
                 <div className="mt-2 p-2 rounded-lg bg-amber-50 border border-amber-200">
                   <p className="text-xs font-medium text-amber-800 uppercase tracking-wide">Note</p>
                   <p className="text-sm text-amber-900">{stop.notes}</p>
+                </div>
+              )}
+              {stop.meetup_note && (
+                <div className="mt-2 p-2 rounded-lg bg-violet-50 border border-violet-200">
+                  <p className="text-xs font-medium text-violet-800 uppercase tracking-wide">
+                    Meet-up
+                  </p>
+                  <p className="text-sm text-violet-950">{stop.meetup_note}</p>
                 </div>
               )}
               {Array.isArray(stop.order_ids) && stop.order_ids.length > 0 && (

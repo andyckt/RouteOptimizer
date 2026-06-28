@@ -23,6 +23,7 @@ export interface RunsByDateStopDto {
   customer_phone: string | null;
   customer_address: string | null;
   notes: string | null;
+  meetup_note: string | null;
   lat: number | null;
   lng: number | null;
   order_ids: string[];
@@ -45,6 +46,7 @@ export interface RunsByDateCustomerDto {
   phone: string | null;
   address: string | null;
   notes: string | null;
+  meetup_note: string | null;
   lat: number | null;
   lng: number | null;
   order_ids: string[];
@@ -183,6 +185,12 @@ function normalizeOrderIds(ids?: string[]): string[] {
   return ids.filter((id) => typeof id === "string" && id.length > 0);
 }
 
+function normalizeNullableString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
 function toIsoOrNull(d?: Date): string | null {
   if (!d) return null;
   const iso = d instanceof Date ? d.toISOString() : new Date(d).toISOString();
@@ -202,6 +210,7 @@ function mapCustomer(c: DeliveryCustomer, index: number): RunsByDateCustomerDto 
     phone: c.phone ?? null,
     address: c.address ?? null,
     notes: c.notes ?? null,
+    meetup_note: normalizeNullableString(c.meetup_note),
     lat: typeof c.lat === "number" ? c.lat : null,
     lng: typeof c.lng === "number" ? c.lng : null,
     order_ids: normalizeOrderIds(c.order_ids),
@@ -243,6 +252,7 @@ function mapStop(
     customer_phone: stop.customer_phone ?? null,
     customer_address: stop.customer_address ?? null,
     notes: stop.notes ?? null,
+    meetup_note: normalizeNullableString(stop.meetup_note ?? customer?.meetup_note),
     lat: typeof customer?.lat === "number" ? customer.lat : null,
     lng: typeof customer?.lng === "number" ? customer.lng : null,
     order_ids: normalizeOrderIds(

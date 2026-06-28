@@ -6,6 +6,7 @@ import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 import type { DeliveryCustomer, StopType } from "@/types/delivery-run";
 import { isSyntheticStop } from "@/lib/stops/synthetic";
 import { HandoffBadge } from "@/components/stops/HandoffBadge";
+import { MeetupBadge } from "@/components/stops/MeetupBadge";
 import { getFixedStopPositionValidationMessage } from "@/lib/validation/fixed-stop-position";
 import {
   CUSTOMER_PASTE_FORMAT_LINES,
@@ -30,12 +31,14 @@ export interface CustomerRow {
   order_ids?: string[];
   is_synthetic?: boolean;
   stop_type?: StopType;
+  meetup_note?: string;
 }
 
 interface CustomersEditorProps {
   customers: CustomerRow[];
   onSave: (customers: CustomerRow[]) => Promise<void>;
   onParseAndAdd: (text: string) => Promise<void>;
+  onAddStructured?: (customer: DeliveryCustomer) => Promise<void>;
   onGeocode: () => Promise<void>;
   onValidateOverride: (index: number, address: string) => Promise<void>;
   saveBlocked: boolean;
@@ -50,10 +53,13 @@ interface CustomersEditorProps {
   onRemoveCustomer?: (index: number) => Promise<void>;
 }
 
+const DEFAULT_MEETUP_NOTE = "Meet-up with another driver";
+
 export function CustomersEditor({
   customers,
   onSave,
   onParseAndAdd,
+  onAddStructured,
   onGeocode,
   onValidateOverride,
   saveBlocked,
@@ -81,6 +87,18 @@ export function CustomersEditor({
   function updateCustomer(index: number, updates: Partial<CustomerRow>) {
     setLocalCustomers((prev) =>
       prev.map((c, i) => (i === index ? { ...c, ...updates } : c))
+    );
+  }
+
+  function toggleMeetupNote(index: number) {
+    setLocalCustomers((prev) =>
+      prev.map((c, i) => {
+        if (i !== index) return c;
+        return {
+          ...c,
+          meetup_note: c.meetup_note ? undefined : DEFAULT_MEETUP_NOTE,
+        };
+      })
     );
   }
 
@@ -155,7 +173,7 @@ export function CustomersEditor({
         <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
           <span aria-hidden>📍</span> Add Single Customer
         </h3>
-        <AddSingleCustomer onParseAndAdd={onParseAndAdd} />
+        <AddSingleCustomer onParseAndAdd={onParseAndAdd} onAddStructured={onAddStructured} />
       </div>
 
       <div>
@@ -224,6 +242,7 @@ export function CustomersEditor({
                 <th className="p-3 text-left text-slate-700 font-semibold">Address</th>
                 <th className="p-3 text-left text-slate-700 font-semibold">Phone</th>
                 <th className="p-3 text-left text-slate-700 font-semibold">Notes</th>
+                <th className="p-3 text-left text-slate-700 font-semibold">Meet-up</th>
                 <th className="p-3 text-left text-slate-700 font-semibold">Status</th>
                 <th className="p-3 text-left text-slate-700 font-semibold">Override</th>
                 <th className="p-3 text-left text-slate-700 font-semibold whitespace-nowrap min-w-[110px]">
@@ -251,6 +270,21 @@ export function CustomersEditor({
                           className="text-blue-600 hover:text-blue-700 text-xs font-medium"
                         >
                           Edit
+                        </button>
+                      )}
+                      {!isSyntheticStop(c) && (
+                        <button
+                          type="button"
+                          onClick={() => toggleMeetupNote(i)}
+                          className={
+                            c.meetup_note
+                              ? "text-xs font-semibold px-2 py-1 rounded-lg bg-violet-600 text-white hover:bg-violet-700 transition-colors whitespace-nowrap"
+                              : "text-xs font-semibold px-2 py-1 rounded-lg bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors whitespace-nowrap"
+                          }
+                          aria-pressed={Boolean(c.meetup_note)}
+                          title={c.meetup_note ? "Remove meet-up marker" : "Mark this customer stop as a meet-up"}
+                        >
+                          {c.meetup_note ? "Meet-up ✓" : "+ Meet-up"}
                         </button>
                       )}
                       <button
@@ -344,11 +378,13 @@ export function CustomersEditor({
                           placeholder="Name"
                         />
                         {isSyntheticStop(c) && <HandoffBadge />}
+                        {c.meetup_note && <MeetupBadge />}
                       </div>
                     ) : (
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-slate-800">{c.name}</span>
                         {isSyntheticStop(c) && <HandoffBadge />}
+                        {c.meetup_note && <MeetupBadge />}
                       </div>
                     )}
                   </td>
@@ -414,6 +450,35 @@ export function CustomersEditor({
                       />
                     ) : (
                       <span className="text-slate-600">{c.notes ?? ""}</span>
+                    )}
+                  </td>
+                  <td className="p-3 align-top min-w-[180px]">
+                    {editingIndex === i ? (
+                      <div className="space-y-2">
+                        {c.meetup_note && (
+                          <input
+                            type="text"
+                            value={c.meetup_note}
+                            onChange={(e) =>
+                              updateCustomer(i, {
+                                meetup_note: e.target.value,
+                              })
+                            }
+                            className="w-full border border-violet-200 rounded-lg px-3 py-2 min-w-0 text-sm focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                            placeholder="Meet driver name/phone..."
+                          />
+                        )}
+                        {!c.meetup_note && (
+                          <span className="text-xs text-slate-400">Use the Meet-up button on the left</span>
+                        )}
+                      </div>
+                    ) : c.meetup_note ? (
+                      <div className="space-y-2">
+                        <MeetupBadge />
+                        <p className="text-violet-800 text-xs font-medium">{c.meetup_note}</p>
+                      </div>
+                    ) : (
+                      <span className="text-slate-400">—</span>
                     )}
                   </td>
                   <td className="p-3 align-top">

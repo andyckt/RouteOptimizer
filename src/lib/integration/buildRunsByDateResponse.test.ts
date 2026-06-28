@@ -285,6 +285,39 @@ describe("buildRunsByDateResponse", () => {
     assert.deepEqual(res.runs[0].stops[0].order_ids, ["LEGACY-CUSTOMER"]);
   });
 
+  it("exposes meetup_note for historical customer-stop meet-ups", () => {
+    const res = buildRunsByDateResponse(parsed, [
+      leanRun({
+        customers: [
+          {
+            name: "A",
+            phone: "",
+            address: "1 St",
+            is_first_stop: false,
+            is_end_point: false,
+            meetup_note: "Meet driver Ben, 4165551234",
+            geocode_status: "success",
+          },
+        ],
+        optimized_route: {
+          stops: [
+            {
+              customer_index: 0,
+              customer_name: "A",
+              customer_phone: "",
+              customer_address: "1 St",
+              is_first_stop: false,
+              is_end_point: false,
+              meetup_note: "Meet driver Sam, 6475559999",
+            },
+          ],
+        },
+      }),
+    ]);
+    assert.equal(res.runs[0].customers[0].meetup_note, "Meet driver Ben, 4165551234");
+    assert.equal(res.runs[0].stops[0].meetup_note, "Meet driver Sam, 6475559999");
+  });
+
   it("exposes synthetic handoff stop distinctly", () => {
     const res = buildRunsByDateResponse(parsed, [
       leanRun({

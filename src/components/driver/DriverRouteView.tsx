@@ -5,6 +5,7 @@ import Image from "next/image";
 import type { DeliveryRun, DeliveryCustomer, OptimizedStop } from "@/types/delivery-run";
 import { isSyntheticStop } from "@/lib/stops/synthetic";
 import { HandoffBadge } from "@/components/stops/HandoffBadge";
+import { MeetupBadge } from "@/components/stops/MeetupBadge";
 
 function formatDuration(minutes: number): string {
   const h = Math.floor(minutes / 60);
@@ -343,6 +344,8 @@ export function DriverRouteView({
             const isExpanded = !isCompleted || expandedStops.has(i);
             const isCurrent = isStarted && !isCompleted && stops.slice(0, i).every((s) => s.completed);
             const isNextStop = i === nextStopIndex;
+            const isStandaloneMeetupPoint = isSyntheticStop(stop);
+            const isCustomerMeetupStop = !isStandaloneMeetupPoint && Boolean(stop.meetup_note);
 
             if (isCompleted && !isExpanded) {
               return (
@@ -360,14 +363,24 @@ export function DriverRouteView({
                     </div>
                     <div className="flex-1 min-w-0">
                       <span className="block font-semibold text-slate-900 truncate">{stop.customer_name}</span>
-                      {isSyntheticStop(stop) && (
+                      {isStandaloneMeetupPoint && (
                         <span className="inline-block mt-0.5">
                           <HandoffBadge />
                         </span>
                       )}
-                      {isSyntheticStop(stop) && (
+                      {isCustomerMeetupStop && (
+                        <span className="inline-block mt-0.5">
+                          <MeetupBadge />
+                        </span>
+                      )}
+                      {isStandaloneMeetupPoint && (
                         <span className="block text-xs text-violet-800/90 mt-0.5">
                           Meet-up point — not a customer delivery
+                        </span>
+                      )}
+                      {isCustomerMeetupStop && (
+                        <span className="block text-xs text-violet-800 font-medium mt-0.5 truncate">
+                          Meet driver here + deliver order
                         </span>
                       )}
                       {stop.customer_address && (
@@ -415,7 +428,8 @@ export function DriverRouteView({
                     <div className="flex justify-between items-start gap-2">
                       <div className="flex items-center gap-2 flex-wrap min-w-0">
                         <span className="text-base font-semibold text-slate-900">{stop.customer_name}</span>
-                        {isSyntheticStop(stop) && <HandoffBadge />}
+                        {isStandaloneMeetupPoint && <HandoffBadge />}
+                        {isCustomerMeetupStop && <MeetupBadge />}
                         {stop.completed && (
                           <>
                             <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
@@ -447,7 +461,7 @@ export function DriverRouteView({
                         </button>
                       )}
                     </div>
-                    {isSyntheticStop(stop) && (
+                    {isStandaloneMeetupPoint && (
                       <p className="text-xs text-violet-800/90 mt-0.5">
                         Meet-up point — not a customer delivery
                       </p>
@@ -455,7 +469,7 @@ export function DriverRouteView({
                     <p className="text-sm text-slate-600 mt-0.5 select-text">
                       {stop.customer_address}
                     </p>
-                    {isSyntheticStop(stop) ? (
+                    {isStandaloneMeetupPoint ? (
                       stop.customer_phone ? (
                         <p className="text-sm text-slate-500 mt-0.5">
                           {stop.customer_phone}
@@ -482,6 +496,16 @@ export function DriverRouteView({
                         </p>
                         <p className="text-sm font-medium text-amber-900">
                           {stop.notes}
+                        </p>
+                      </div>
+                    )}
+                    {isCustomerMeetupStop && (
+                      <div className="mt-2 p-3 rounded-xl bg-violet-50 border border-violet-200">
+                        <p className="text-xs font-semibold text-violet-800 uppercase tracking-wide mb-0.5">
+                          Meet-up here
+                        </p>
+                        <p className="text-sm font-medium text-violet-950 mt-1">
+                          {stop.meetup_note}
                         </p>
                       </div>
                     )}

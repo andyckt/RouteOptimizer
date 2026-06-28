@@ -2,6 +2,7 @@ import type { DeliveryCustomer, OptimizedStop } from "@/types/delivery-run";
 import { getDirectionsLeg, type LatLng } from "@/lib/google/directions";
 import { validationError } from "@/lib/http/errors";
 import { getEffectiveServiceTimeMinutes } from "@/lib/stops/synthetic";
+import { normalizeMeetupNote } from "@/lib/normalization/delivery-run";
 
 function toRoutingCoords(customer: DeliveryCustomer): {
   coords: LatLng;
@@ -101,6 +102,7 @@ export async function computeOptimizedRouteFromSequence(
   }
 
   const priorOrderIdsByCustomer = new Map<number, string[]>();
+  const priorMeetupNotesByCustomer = new Map<number, string>();
   if (priorStops) {
     for (const ps of priorStops) {
       if (
@@ -109,6 +111,12 @@ export async function computeOptimizedRouteFromSequence(
         ps.order_ids.length > 0
       ) {
         priorOrderIdsByCustomer.set(ps.customer_index, [...ps.order_ids]);
+      }
+      if (typeof ps?.customer_index === "number") {
+        const priorMeetupNote = normalizeMeetupNote(ps.meetup_note);
+        if (priorMeetupNote) {
+          priorMeetupNotesByCustomer.set(ps.customer_index, priorMeetupNote);
+        }
       }
     }
   }
@@ -155,6 +163,9 @@ export async function computeOptimizedRouteFromSequence(
         : Array.isArray(seedIds) && seedIds.length > 0
           ? [...seedIds]
           : undefined;
+    const priorMeetupNote = priorMeetupNotesByCustomer.get(custIdx);
+    const seedMeetupNote = normalizeMeetupNote(customer.meetup_note);
+    const resolvedMeetupNote = priorMeetupNote ?? seedMeetupNote;
 
     stops.push({
       customer_index: custIdx,
@@ -172,6 +183,7 @@ export async function computeOptimizedRouteFromSequence(
       nearby_location_reference: routing.nearbyRef,
       completed: false,
       ...(resolvedOrderIds ? { order_ids: resolvedOrderIds } : {}),
+      ...(resolvedMeetupNote ? { meetup_note: resolvedMeetupNote } : {}),
       ...(customer.is_synthetic !== undefined
         ? { is_synthetic: customer.is_synthetic }
         : {}),

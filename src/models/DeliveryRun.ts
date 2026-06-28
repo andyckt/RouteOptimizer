@@ -27,6 +27,7 @@ const customerSchema = new Schema<DeliveryCustomer>(
     order_ids: { type: [String], default: undefined },
     is_synthetic: { type: Boolean },
     stop_type: { type: String, enum: ["customer", "handoff"] },
+    meetup_note: { type: String },
     service_time_minutes: { type: Number },
   },
   { _id: false }
@@ -77,6 +78,7 @@ const optimizedStopSchema = new Schema(
     kapioo_delivery_started_sync: { type: kapiooSyncSchema, default: undefined },
     is_synthetic: { type: Boolean },
     stop_type: { type: String, enum: ["customer", "handoff"] },
+    meetup_note: { type: String },
     service_time_minutes: { type: Number },
   },
   { _id: false }

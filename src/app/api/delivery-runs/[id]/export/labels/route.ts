@@ -7,6 +7,7 @@ import { handleApiError } from "@/lib/http/response";
 import { badRequest, notFound } from "@/lib/http/errors";
 import type { OptimizedStop } from "@/types/delivery-run";
 import { requireAdminSession } from "@/lib/auth/requireAdmin";
+import { isSyntheticStop } from "@/lib/stops/synthetic";
 import {
   formatLabelsExportFilename,
   formatContentDispositionAttachment,
@@ -24,6 +25,32 @@ interface LabelsBody {
   labelQuantities?: Record<string, number>;
   extraCustomers?: ExtraCustomer[];
   extrasPlacement?: "top" | "bottom";
+}
+
+export function buildRouteLabelRows(
+  stops: OptimizedStop[],
+  labelQuantities: Record<string, number>
+): [string, string][] {
+  const labelRows: [string, string][] = [];
+  for (let i = 0; i < stops.length; i++) {
+    const s = stops[i];
+    if (isSyntheticStop(s)) continue;
+    const qty = Math.max(
+      0,
+      Math.floor(
+        labelQuantities[String(i)] ??
+          labelQuantities[i as unknown as string] ??
+          2
+      )
+    );
+    for (let j = 0; j < qty; j++) {
+      labelRows.push([
+        s.customer_name ?? "",
+        s.customer_address ?? "",
+      ]);
+    }
+  }
+  return labelRows;
 }
 
 export async function POST(req: NextRequest, { params }: Params) {
@@ -58,8 +85,6 @@ export async function POST(req: NextRequest, { params }: Params) {
     const route = run.optimized_route;
     const stops = route?.stops ?? [];
 
-    const labelRows: [string, string][] = [];
-
     const extras: [string, string][] = [];
     for (const ec of extraCustomers) {
       const qty = Math.max(0, Math.floor(ec.quantity ?? 2));
@@ -68,23 +93,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       }
     }
 
-    for (let i = 0; i < stops.length; i++) {
-      const s = stops[i];
-      const qty = Math.max(
-        0,
-        Math.floor(
-          labelQuantities[String(i)] ??
-            labelQuantities[i as unknown as string] ??
-            2
-        )
-      );
-      for (let j = 0; j < qty; j++) {
-        labelRows.push([
-          s.customer_name ?? "",
-          s.customer_address ?? "",
-        ]);
-      }
-    }
+    const labelRows = buildRouteLabelRows(stops, labelQuantities);
 
     let finalRows: [string, string][];
     if (extrasPlacement === "top") {

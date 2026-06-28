@@ -231,6 +231,30 @@ function EditRunContent() {
     );
   }
 
+  async function handleAddStructuredCustomer(customer: DeliveryCustomer) {
+    if (saveBlocked || !run) return;
+    const customersToSave = [...(run.customers ?? []), customer];
+    const res = await fetch(`/api/delivery-runs/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        run_date: run.run_date,
+        driver_name: run.driver_name,
+        start_location: run.start_location,
+        end_location: run.end_location,
+        start_time: run.start_time,
+        travel_mode: run.travel_mode,
+        customers: customersToSave,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error ?? "Failed to add customer");
+    }
+    const updated = await res.json();
+    setRun(updated);
+  }
+
   async function handleGeocode() {
     const res = await fetch(`/api/delivery-runs/${id}/geocode`, {
       method: "POST",
@@ -453,6 +477,7 @@ function EditRunContent() {
                 onSave={handleSaveCustomers}
                 onSaveAndOptimize={handleSaveAndOptimize}
                 onParseAndAdd={handleParseAndAdd}
+                onAddStructured={handleAddStructuredCustomer}
                 onGeocode={handleGeocode}
                 onValidateOverride={handleValidateOverride}
                 saveBlocked={saveBlocked}

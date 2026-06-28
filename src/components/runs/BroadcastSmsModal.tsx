@@ -93,7 +93,7 @@ const RecipientRow = memo(function RecipientRow({
         </div>
         <div className="text-xs text-slate-500 truncate tabular-nums">{phone}</div>
         {isHandoff ? (
-          <div className="text-xs text-slate-500 mt-0.5">Handoff · not SMS eligible</div>
+          <div className="text-xs text-slate-500 mt-0.5">Meet-up point · not SMS eligible</div>
         ) : !smsable ? (
           <div className="text-xs text-amber-700 mt-0.5">Cannot receive SMS · fix number</div>
         ) : null}
