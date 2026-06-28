@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { OptimizedStop } from "@/types/delivery-run";
-import { buildRouteLabelRows } from "./route";
+import { buildRouteLabelRows } from "./buildRouteLabelRows";
 
 function stop(overrides: Partial<OptimizedStop>): OptimizedStop {
   return {
