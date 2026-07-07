@@ -113,11 +113,15 @@ export async function PUT(request: NextRequest, { params }: Params) {
       }
     }
     const wasCompleted = run.status === "completed";
+    const prevRunDate = run.run_date as string;
     Object.assign(run, updates);
     await run.save();
 
-    // Non-blocking: record payment if admin manually set status to completed
-    if (!wasCompleted && run.status === "completed") {
+    // Re-record payment when: run just became completed, OR run was already
+    // completed and run_date changed (correcting a wrong date must update
+    // the pay_week_index and the payroll sheet).
+    const runDateChanged = wasCompleted && typeof updates.run_date === "string" && updates.run_date !== prevRunDate;
+    if ((!wasCompleted && run.status === "completed") || runDateChanged) {
       recordRunPayment(run.toObject() as Parameters<typeof recordRunPayment>[0]).catch(() => {});
     }
 

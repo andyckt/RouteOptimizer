@@ -19,11 +19,24 @@ export async function getDirectionsLeg(
 ): Promise<DirectionsLeg | null> {
   const { GOOGLE_MAPS_API_KEY } = getServerEnv();
   const mode = travelMode === "ebike" ? "bicycling" : "driving";
-  const departureParam =
+
+  // Google Directions API rejects departure_time values in the past.
+  // Clamp to at least the current second so a run whose scheduled start
+  // time has already passed (common when the admin is in a far-ahead
+  // timezone like HKT) still gets a valid traffic-aware response.
+  // ETA labels in the caller are computed from the scheduled time, not
+  // from this clamped value, so displayed times are unaffected.
+  const nowSec = Math.floor(Date.now() / 1000);
+  const depSec =
     departureTime !== undefined
-      ? `&departure_time=${Math.floor(
-          typeof departureTime === "number" ? departureTime : departureTime.getTime() / 1000
-        )}`
+      ? typeof departureTime === "number"
+        ? departureTime
+        : Math.floor(departureTime.getTime() / 1000)
+      : undefined;
+  const effectiveDepSec = depSec !== undefined ? Math.max(depSec, nowSec) : undefined;
+  const departureParam =
+    effectiveDepSec !== undefined
+      ? `&departure_time=${effectiveDepSec}`
       : "&departure_time=now";
   const url =
     "https://maps.googleapis.com/maps/api/directions/json" +
