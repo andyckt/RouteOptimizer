@@ -248,8 +248,8 @@ function ExportLabelsModal({
           <div>
             <h2 className="text-xl font-bold text-slate-900">Export Delivery Labels</h2>
             <p className="text-slate-600 text-sm mt-1">
-              Set how many labels to print for each customer. Labels will be exported in reverse
-              route order (first stop printed last).
+              Label counts are pre-filled from each customer&apos;s meal order. Adjust if needed, then export.
+              Labels will be exported in reverse route order (first stop printed last).
             </p>
           </div>
           <button
@@ -306,6 +306,11 @@ function ExportLabelsModal({
                     }}
                     className="w-16 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
                   />
+                  {typeof stop.box_count === "number" && stop.box_count > 0 && (
+                    <span className="text-xs text-emerald-600 font-medium whitespace-nowrap">
+                      {stop.box_count} meals
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
@@ -685,8 +690,10 @@ function RunDetailsContent() {
   function handleOpenLabelsModal() {
     const stops = run?.optimized_route?.stops ?? [];
     const initial: Record<number, number> = {};
-    stops.forEach((_, i) => {
-      initial[i] = 2;
+    stops.forEach((stop, i) => {
+      initial[i] = typeof stop.box_count === "number" && stop.box_count > 0
+        ? stop.box_count
+        : 2;
     });
     setLabelQuantities(initial);
     setExtraCustomers([]);
