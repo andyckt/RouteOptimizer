@@ -26,6 +26,15 @@ describe("buildPreviewRunResponse", () => {
     assert.equal(res.details_link, null);
     assert.equal(res.driver_link, null);
     assert.equal(res.status, "preview");
+    assert.equal(res.estimated_finish_time, "2026-05-29T16:00:00.000Z");
+  });
+
+  it("returns a winter finish in Toronto regardless of host timezone", () => {
+    const res = buildPreviewRunResponse({
+      run_date: "2026-11-02", start_time: "10:00", status: "preview",
+      optimized_route: { total_duration_minutes: 90, stops: [] },
+    });
+    assert.equal(res.estimated_finish_time, "2026-11-02T16:30:00.000Z");
   });
 });
 

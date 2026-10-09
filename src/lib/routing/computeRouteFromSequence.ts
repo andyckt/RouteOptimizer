@@ -3,6 +3,7 @@ import { getDirectionsLeg, type LatLng } from "@/lib/google/directions";
 import { validationError } from "@/lib/http/errors";
 import { getEffectiveServiceTimeMinutes } from "@/lib/stops/synthetic";
 import { normalizeMeetupNote } from "@/lib/normalization/delivery-run";
+import { parseTorontoRunTime, TORONTO_TIMEZONE } from "@/lib/time/toronto";
 
 function toRoutingCoords(customer: DeliveryCustomer): {
   coords: LatLng;
@@ -43,6 +44,7 @@ function addMinutes(date: Date, minutes: number): Date {
 
 function toEtaLabel(date: Date): string {
   return date.toLocaleTimeString("en-US", {
+    timeZone: TORONTO_TIMEZONE,
     hour12: true,
     hour: "2-digit",
     minute: "2-digit",
@@ -121,7 +123,7 @@ export async function computeOptimizedRouteFromSequence(
     }
   }
 
-  let currentTime = new Date(`${run.run_date}T${run.start_time}:00`);
+  let currentTime = parseTorontoRunTime(run.run_date, run.start_time);
   const stops: OptimizedStop[] = [];
 
   for (let i = 0; i < customerIndicesInOrder.length; i++) {

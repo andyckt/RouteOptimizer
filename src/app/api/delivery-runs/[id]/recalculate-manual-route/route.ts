@@ -15,6 +15,7 @@ import {
 import { assertManualOrderRespectsFixedStops } from "@/lib/validation/fixed-stop-position";
 import { requireAdminSession } from "@/lib/auth/requireAdmin";
 import { getEffectiveServiceTimeMinutes } from "@/lib/stops/synthetic";
+import { parseTorontoRunTime } from "@/lib/time/toronto";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -52,13 +53,11 @@ function toEtaLabel(date: Date): string {
 }
 
 function parseBaseTime(runDate: string, startTime: string): Date {
-  const [h, m] = (startTime || "09:00").split(":").map(Number);
-  const dateStr = `${runDate}T${String(h ?? 9).padStart(2, "0")}:${String(m ?? 0).padStart(2, "0")}:00`;
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) {
-    return new Date(new Date().toISOString().slice(0, 10) + "T09:00:00");
+  try {
+    return parseTorontoRunTime(runDate, startTime || "09:00");
+  } catch {
+    throw validationError("Invalid delivery date or Toronto start time.");
   }
-  return d;
 }
 
 export async function POST(req: NextRequest, { params }: Params) {
