@@ -5,6 +5,7 @@
 
 import { makeDriverToken } from "@/lib/security/driverToken";
 import type { GoogleApiCostEstimate } from "@/lib/integration/googleApiBudget";
+import { parseTorontoRunTime } from "@/lib/time/toronto";
 
 export interface GeocodeFailure {
   index: number;
@@ -72,15 +73,17 @@ export interface IntegrationRunResponse {
 
 /**
  * estimated_finish_time = run start datetime + total_duration_minutes.
- * Mirrors how the rest of the app interprets `${run_date}T${start_time}:00` (local time),
- * keeping it consistent with computeOptimizedRouteFromSequence.
+ * Interprets the business clock in Toronto, consistent with route computation.
  */
 function computeEstimatedFinishTime(run: RunForResponse): string | null {
   const totalMin = run.optimized_route?.total_duration_minutes;
   if (typeof totalMin !== "number" || !run.run_date || !run.start_time) return null;
-  const base = new Date(`${run.run_date}T${run.start_time}:00`);
-  if (isNaN(base.getTime())) return null;
-  return new Date(base.getTime() + totalMin * 60 * 1000).toISOString();
+  try {
+    const base = parseTorontoRunTime(run.run_date, run.start_time);
+    return new Date(base.getTime() + totalMin * 60 * 1000).toISOString();
+  } catch {
+    return null;
+  }
 }
 
 export function buildRunIntegrationResponse(

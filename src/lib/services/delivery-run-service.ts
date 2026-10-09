@@ -25,6 +25,7 @@ import {
 import { geocodeAddress } from "@/lib/google/geocoding";
 import { type LatLng } from "@/lib/google/directions";
 import { optimizeTours } from "@/lib/google/fleetRouting";
+import { parseTorontoRunTime } from "@/lib/time/toronto";
 import { sanitizeCustomers, sanitizeStops } from "@/lib/normalization/delivery-run";
 import { computeOptimizedRouteFromSequence } from "@/lib/routing/computeRouteFromSequence";
 import type { GeocodeFailure } from "@/lib/integration/buildRunIntegrationResponse";
@@ -282,8 +283,8 @@ export async function computeOptimizedRouteForRun(
     };
   });
 
-  const globalStartTime = `${input.run_date}T${input.start_time}:00-05:00`;
-  const globalEndTime = `${input.run_date}T23:59:59-05:00`;
+  const globalStartTime = parseTorontoRunTime(input.run_date, input.start_time).toISOString();
+  const globalEndTime = parseTorontoRunTime(input.run_date, "23:59:59").toISOString();
 
   const fleet =
     shipments.length > 0
